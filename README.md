@@ -15,13 +15,14 @@
 ## 项目文档
 
 - [领域术语](CONTEXT.md)
-- [决策地图](MAP.md)
-- [任务索引](TICKETS.md)
+- [决策地图](https://github.com/JunduoLiu/RockBalancing/issues/1)
+- [任务与讨论](https://github.com/JunduoLiu/RockBalancing/issues)
 - [三人分工建议](PROPOSAL.md)
-- [追踪约定](TRACKER.md)
+- [追踪约定](docs/agents/issue-tracker.md)
 - [Agent 技能配置](AGENTS.md)
 
-GitHub Issues 是任务状态与讨论的来源。本地地图和决策票保留为带链接的文档快照。
-开发实现任务需在职责与接口确认后另行拆分。
+GitHub Issues 是任务、规格、认领、状态与决策讨论的唯一追踪来源。
+仓库保留领域术语、架构决策和供 Issues 引用的方案文档。
+当前地图的子议题是决策票；职责与接口确认后，经 `to-spec`、`to-tickets` 拆分开发实现任务。
 
 此项目不使用 Agent Hub。

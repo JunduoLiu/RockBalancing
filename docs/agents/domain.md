@@ -9,5 +9,5 @@
 
 CONTEXT.md 是领域术语来源。
 docs/adr/ 保存已确认的架构决策。
-MAP.md 与 tickets/ 记录未决问题及历史结论。
+未决问题、决策讨论与历史结论在 GitHub Issues 中读取，入口见[决策地图](https://github.com/JunduoLiu/RockBalancing/issues/1)。
 PROPOSAL.md 仍为待团队评审的分工建议。
