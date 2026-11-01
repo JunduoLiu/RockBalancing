@@ -22,3 +22,7 @@ Thumbs.db
 .env.*
 !.env.example
 .scratch/
+
+# Generated editor workspace
+/.vscode/
+*.slnx
