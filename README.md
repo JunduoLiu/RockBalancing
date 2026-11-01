@@ -2,6 +2,16 @@
 
 面向手机浏览器的轻量 Unity 3D 叠石头小游戏。目前处于玩法、职责与接口规划阶段。
 
+## 打开 Unity 项目
+
+使用 Unity **6000.3.20f1**。在 Unity Hub 中添加本仓库根目录，即同时包含
+`Assets/`、`Packages/` 和 `ProjectSettings/` 的文件夹。
+
+当前起始场景为 `Assets/Scenes/SampleScene.unity`。仓库包含 Unity 项目初始文件，
+玩法与分工决策仍按下方文档和 GitHub Issues 追踪。
+
+`Library/`、`Temp/`、`Logs/`、`UserSettings/` 等本地生成内容由 Unity 重建，不纳入版本控制。
+
 ## 项目文档
 
 - [领域术语](CONTEXT.md)
