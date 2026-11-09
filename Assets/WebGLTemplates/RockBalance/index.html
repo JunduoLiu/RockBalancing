@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#dce4dc">
+  <title>叠石 · Rock Balance</title>
+  <style>
+    * { box-sizing:border-box } html,body { margin:0;width:100%;height:100%;overflow:hidden;background:#dce4dc;color:#293b3b;font-family:system-ui,sans-serif }
+    #game { position:fixed;inset:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);touch-action:none }
+    canvas#unity-canvas { display:block;width:100%;height:100%;touch-action:none }
+    #loading { position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;background:#dce4dc;gap:18px;z-index:2 }
+    #loading h1 { font-weight:400;letter-spacing:.22em } progress { width:min(280px,70vw);accent-color:#566a61 } #load-message { max-width:80vw;text-align:center }
+    #share-panel { position:fixed;inset:0;z-index:5;background:#f4f2e9;overflow:auto;padding:24px 20px max(24px,env(safe-area-inset-bottom));text-align:center;overscroll-behavior:contain }
+    [hidden] { display:none!important } #share-image { max-width:100%;max-height:65dvh;object-fit:contain;display:block;margin:0 auto 14px }
+    .buttons { display:flex;gap:10px;flex-wrap:wrap;max-width:520px;margin:14px auto;justify-content:center }
+    button,a.download { font:inherit;border:1px solid #bbc7bd;background:#fffdf4;color:#293b3b;padding:12px 16px;border-radius:3px;cursor:pointer;text-decoration:none }
+    button:disabled { opacity:.45 } #share-message { font-size:14px;min-height:24px } #share-link { width:min(500px,95%);padding:10px;font:inherit }
+  </style>
+</head>
+<body>
+  <main id="game"><canvas id="unity-canvas" tabindex="0" aria-label="叠石游戏"></canvas></main>
+  <section id="loading"><h1>叠 石</h1><span>一点耐心，一点重力。</span><progress id="load-progress" max="1" value="0"></progress><p id="load-message">正在准备石头…</p></section>
+  <section id="share-panel" role="dialog" aria-modal="true" aria-label="分享当前高度" hidden>
+    <img id="share-image" alt="点击时的完整现场和当前高度">
+    <p id="share-message" aria-live="polite"></p>
+    <div class="buttons"><button id="share-system" hidden>系统分享</button><a class="download" id="share-save" download="rock-balance.png" hidden>保存图片</a><button id="share-copy">复制游戏链接</button><button id="share-retry" hidden>重试生成</button><button id="share-close">返回游戏</button></div>
+    <input id="share-link" aria-label="游戏链接" readonly hidden>
+  </section>
+  <script src="qrcode.js"></script>
+  <script src="share.js"></script>
+  <script>
+    const canvas=document.getElementById('unity-canvas');
+    const config={
+      dataUrl:'Build/{{{ DATA_FILENAME }}}',frameworkUrl:'Build/{{{ FRAMEWORK_FILENAME }}}',codeUrl:'Build/{{{ CODE_FILENAME }}}',
+#if MEMORY_FILENAME
+      memoryUrl:'Build/{{{ MEMORY_FILENAME }}}',
+#endif
+#if SYMBOLS_FILENAME
+      symbolsUrl:'Build/{{{ SYMBOLS_FILENAME }}}',
+#endif
+      streamingAssetsUrl:'StreamingAssets',companyName:{{{ JSON.stringify(COMPANY_NAME) }}},productName:{{{ JSON.stringify(PRODUCT_NAME) }}},productVersion:{{{ JSON.stringify(PRODUCT_VERSION) }}},
+      devicePixelRatio:Math.min(window.devicePixelRatio||1,2),
+      showBanner:function(message,type){if(type==='error') fail(message);}
+    };
+    function fail(message){document.getElementById('loading').hidden=false;document.getElementById('load-message').textContent='加载失败，请刷新重试。'+message;}
+    const script=document.createElement('script');script.src='Build/{{{ LOADER_FILENAME }}}';
+    script.onerror=()=>fail('无法连接游戏文件。');
+    script.onload=()=>createUnityInstance(canvas,config,p=>{document.getElementById('load-progress').value=p;}).then(instance=>{window.gameInstance=instance;document.getElementById('loading').hidden=true;}).catch(error=>fail(String(error)));
+    document.body.appendChild(script);
+    canvas.addEventListener('contextmenu',e=>e.preventDefault());
+    canvas.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+    function cancelGesture(){if(window.gameInstance)window.gameInstance.SendMessage('Rock Balancing','CancelForFocusLoss','');}
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelGesture();});
+    window.addEventListener('blur',cancelGesture);
+    canvas.addEventListener('pointercancel',cancelGesture);
+    document.addEventListener('gesturestart',e=>e.preventDefault(),{passive:false});
+  </script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+{
+  "name": "RockBalancing.Editor",
+  "references": ["RockBalancing.Runtime"],
+  "includePlatforms": ["Editor"]
+}
