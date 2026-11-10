@@ -28,9 +28,12 @@ namespace RockBalancing.Editor
         }
         public static void BuildWeb()
         {
+            if(!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL,BuildTarget.WebGL))
+                throw new System.InvalidOperationException("Install Web Build Support for this Unity version, then restart the Editor.");
             PlayerSettings.companyName = "RockBalancing";
             PlayerSettings.productName = "Rock Balance";
-            PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
+            PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
+            PlayerSettings.WebGL.decompressionFallback = true;
             PlayerSettings.WebGL.dataCaching = false;
             PlayerSettings.WebGL.template = "PROJECT:RockBalance";
             PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
@@ -42,6 +45,15 @@ namespace RockBalancing.Editor
             });
             if (report.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
                 throw new System.Exception("Web build failed: " + report.summary.result);
+            // A module installed while the Editor is open can report success even
+            // when its postprocessor did not load and no browser files were written.
+            string output="Builds/Web";
+            if(!File.Exists(Path.Combine(output,"index.html")) || !Directory.Exists(Path.Combine(output,"Build")) ||
+                Directory.GetFiles(Path.Combine(output,"Build"),"*.wasm*").Length==0 ||
+                Directory.GetFiles(Path.Combine(output,"Build"),"*.loader.js").Length==0 ||
+                Directory.GetFiles(Path.Combine(output,"Build"),"*.data*").Length==0 ||
+                Directory.GetFiles(Path.Combine(output,"Build"),"*.framework.js*").Length==0)
+                throw new System.Exception("Web build produced no complete browser output. Restart the Editor after installing Web Build Support and rebuild.");
         }
 
         [MenuItem("Rock Balancing/Update scene assets")]
