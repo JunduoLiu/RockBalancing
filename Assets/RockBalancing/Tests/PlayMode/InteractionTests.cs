@@ -342,6 +342,187 @@ namespace RockBalancing.Tests
             pad.OnPointerUp(PadEvent(pad,Vector2.up));yield return new WaitForSecondsRealtime(.5f);
             yield return Tap(Centre(View.ReleaseButton));Assert.That(stone.Released,Is.True);
         }
+        [UnityTest] public IEnumerator AdjustmentAndManualObservationHoldCentreUntilBothEndThenRecenterSmoothly()
+        {
+            var stone=session.Pending;var centre=stone.transform.position;
+            var pad=Pad();var initial=input.ViewCamera.transform.position;
+            pad.OnPointerDown(PadEvent(pad,Vector2.right));yield return new WaitForSeconds(.4f);
+            Assert.That(input.ViewCamera.transform.position,Is.EqualTo(initial));
+            Assert.That(Vector3.Distance(centre,stone.transform.position),Is.GreaterThan(.08f));
+            Pointer(Blank,true);yield return null;
+            Pointer(Blank+Vector2.right*120,true);yield return null;yield return null;
+            AssertAimedAt(centre);
+            pad.OnPointerUp(PadEvent(pad,Vector2.right));
+            var observed=input.ViewCamera.transform.position;var position=stone.transform.position;
+            yield return new WaitForSeconds(.2f);
+            Assert.That(input.ViewCamera.transform.position,Is.EqualTo(observed),"Held observation must not drift when the control finger ends");
+            Pointer(Blank+Vector2.right*120,false);yield return null;yield return null;
+            float full=Vector3.Distance(centre,position), first=Vector3.Distance(observed,input.ViewCamera.transform.position);
+            Assert.That(first,Is.GreaterThan(0));Assert.That(first,Is.LessThan(full*.8f),"Recenter must not snap");
+            yield return new WaitForSeconds(2);
+            Assert.That(Vector3.Distance(input.ViewCamera.transform.position,observed+(position-centre)),Is.LessThan(.006f));
+            Assert.That(stone.transform.position,Is.EqualTo(position));Assert.That(stone.Released,Is.False);
+        }
+        [UnityTest] public IEnumerator TopViewMovementUsesCurrentOrbitHeadingAndControlTouchNeverJoinsPinch()
+        {
+            yield return Orbit(Vector2.down*1000);
+            touchscreen=InputSystem.AddDevice<Touchscreen>();touchscreen.MakeCurrent();
+            // Let UI actions bind the newly added device after the mouse gesture.
+            yield return null;yield return null;
+            var stone=session.Pending;var centre=stone.transform.position;
+            var control=PadEvent(Pad(),Vector2.up).position;
+            Touch(1,UnityEngine.InputSystem.TouchPhase.Began,control);
+            Touch(2,UnityEngine.InputSystem.TouchPhase.Began,Blank);yield return null;yield return null;
+            float radius=Vector3.Distance(input.ViewCamera.transform.position,centre);
+            Vector3 lastDirection=Vector3.zero;
+            for(int i=1;i<=8;i++)
+            {
+                Touch(2,UnityEngine.InputSystem.TouchPhase.Moved,Blank+Vector2.right*(i*40));
+                yield return null;
+                var before=stone.transform.position;
+                yield return null;
+                var delta=stone.transform.position-before;
+                var expected=Vector3.Cross(input.ViewCamera.transform.right,Vector3.up).normalized;
+                Assert.That(delta.magnitude,Is.GreaterThan(.00001f),$"Step {i}, control {control}, adjusting {input.Adjusting}, available {input.CanAdjust}");
+                Assert.That(Vector3.Dot(delta.normalized,expected),Is.GreaterThan(.999f),"Use the same frame's yaw even at 85 degrees");
+                if(i>1)Assert.That(Vector3.Dot(lastDirection,delta.normalized),Is.GreaterThan(.97f),"A small orbit step must not reverse movement");
+                lastDirection=delta.normalized;
+                Assert.That(stone.transform.position.y,Is.EqualTo(centre.y));
+                Assert.That(Vector3.Distance(input.ViewCamera.transform.position,centre),Is.EqualTo(radius).Within(.002f));
+            }
+            // The scene finger may cross the control region but never becomes a joystick.
+            Touch(2,UnityEngine.InputSystem.TouchPhase.Moved,Centre(Pad(true)));yield return null;
+            Touch(1,UnityEngine.InputSystem.TouchPhase.Ended,control);yield return null;
+            var stopped=stone.transform.position;
+            Touch(2,UnityEngine.InputSystem.TouchPhase.Moved,PadEvent(Pad(true),Vector2.up).position);yield return new WaitForSeconds(.1f);
+            Assert.That(stone.transform.position,Is.EqualTo(stopped));
+            Touch(2,UnityEngine.InputSystem.TouchPhase.Ended,Centre(Pad(true)));yield return null;
+            Assert.That(stone.Released,Is.False);
+        }
+        [UnityTest] public IEnumerator ControlDraggedIntoSceneKeepsOwnershipAndPinchWaitsForAllSceneFingers()
+        {
+            touchscreen=InputSystem.AddDevice<Touchscreen>();touchscreen.MakeCurrent();
+            var stone=session.Pending;var centre=stone.transform.position;
+            var a=Centre(Pad());var b=Blank;var c=Blank+Vector2.right*100;
+            Touch(1,UnityEngine.InputSystem.TouchPhase.Began,a);yield return null;
+            Touch(1,UnityEngine.InputSystem.TouchPhase.Moved,a+Vector2.right*200);yield return new WaitForSeconds(.2f);
+            Touch(2,UnityEngine.InputSystem.TouchPhase.Began,b);Touch(3,UnityEngine.InputSystem.TouchPhase.Began,c);yield return null;
+            Touch(1,UnityEngine.InputSystem.TouchPhase.Moved,new Vector2(Screen.width*.9f,Screen.height*.6f));yield return null;yield return null;
+            Assert.That(Vector3.Distance(input.ViewCamera.transform.position,centre),Is.EqualTo(3.8f).Within(.002f),"Moving a control finger into the scene must not pinch");
+            Touch(1,UnityEngine.InputSystem.TouchPhase.Ended,a);yield return null;
+            Touch(3,UnityEngine.InputSystem.TouchPhase.Moved,c+Vector2.right*50);yield return null;yield return null;
+            Assert.That(Vector3.Distance(input.ViewCamera.transform.position,centre),Is.EqualTo(3.8f/1.5f).Within(.01f));
+            var camera=input.ViewCamera.transform.position;
+            Touch(3,UnityEngine.InputSystem.TouchPhase.Ended,c+Vector2.right*50);yield return null;
+            Touch(2,UnityEngine.InputSystem.TouchPhase.Moved,b+Vector2.up*50);yield return new WaitForSeconds(.15f);
+            Assert.That(input.ViewCamera.transform.position,Is.EqualTo(camera),"Remaining pinch finger owns the centre until it ends");
+            Touch(2,UnityEngine.InputSystem.TouchPhase.Canceled,b);yield return null;
+            var stopped=stone.transform.position;
+            yield return new WaitForSeconds(.2f);
+            Assert.That(stone.transform.position,Is.EqualTo(stopped));Assert.That(input.Adjusting,Is.False);
+            Assert.That(Vector3.Distance(camera,input.ViewCamera.transform.position),Is.GreaterThan(.001f),"Cancel releases the observation lock");
+            Assert.That(stone.Released,Is.False);
+        }
+        sealed class NextSupplyFactory : IStoneFactory
+        {
+            bool first=true;
+            public readonly System.Threading.Tasks.TaskCompletionSource<Stone> Next = new System.Threading.Tasks.TaskCompletionSource<Stone>();
+            public System.Threading.Tasks.Task<Stone> CreateAsync(Vector3 position,Transform parent)
+            {
+                if(first || Next.Task.IsCompleted){first=false;return new StoneFactory(nextSeed:()=>123).CreateAsync(position,parent);}
+                return Next.Task;
+            }
+        }
+        [UnityTest] public IEnumerator ReleaseAndDiscardWaitInPlaceThenSmoothlyAcquireLateSupplyWithoutOldInput()
+        {
+            for(int discard=0;discard<2;discard++)
+            {
+                var factory=new NextSupplyFactory();session.Initialize(factory,session.Base,session.Ground);yield return null;yield return null;
+                var stone=session.Pending;var centre=stone.transform.position;
+                var pad=Pad();pad.OnPointerDown(PadEvent(pad,Vector2.right));yield return new WaitForSeconds(.25f);
+                var camera=input.ViewCamera.transform.position;var rotation=input.ViewCamera.transform.rotation;
+                Assert.That(input.ActOnStone(stone,discard==1),Is.True);
+                yield return new WaitForSeconds(.2f);
+                Assert.That(session.Waiting,Is.True);Assert.That(input.ViewCamera.transform.position,Is.EqualTo(camera));
+                Assert.That(input.ViewCamera.transform.rotation,Is.EqualTo(rotation));
+                var next=new StoneFactory(nextSeed:()=>456).CreateAsync(centre+new Vector3(-.3f,.5f,0),session.transform).Result;
+                var newCentre=next.transform.position;factory.Next.SetResult(next);
+                yield return null;yield return null;
+                Assert.That(session.Pending,Is.SameAs(next));
+                float travel=Vector3.Distance(camera,input.ViewCamera.transform.position);
+                Assert.That(travel,Is.GreaterThan(0));Assert.That(travel,Is.LessThan(Vector3.Distance(centre,newCentre)*.8f));
+                pad.OnDrag(PadEvent(pad,Vector2.right));yield return new WaitForSeconds(2);
+                Assert.That(next.transform.position,Is.EqualTo(newCentre));Assert.That(next.Released,Is.False);
+                Assert.That(Vector3.Distance(input.ViewCamera.transform.position,camera+newCentre-centre),Is.LessThan(.02f));
+                pad.OnPointerUp(PadEvent(pad,Vector2.right));
+                session.Restart();yield return null;yield return null;
+                Assert.That(Vector3.Distance(input.ViewCamera.transform.position,camera),Is.LessThan(.002f));
+                Assert.That(input.Adjusting,Is.False);
+            }
+        }
+        [UnityTest] public IEnumerator HighTowerOffsetPendingAndCollapseKeepControlsAndGuidesReadable()
+        {
+            var support=session.Pending;support.transform.localScale=new Vector3(1,20,1);Physics.SyncTransforms();
+            support.transform.position+=Vector3.up*(session.BaseTop-support.Shape.bounds.min.y+.001f);Physics.SyncTransforms();
+            Assert.That(session.Release(support),Is.True);support.Body.constraints=RigidbodyConstraints.FreezeAll;
+            yield return new WaitForFixedUpdate();yield return new WaitForFixedUpdate();session.RefreshState();
+            var stone=session.Pending;
+            Assert.That(session.Adjust(stone,new Vector3(.25f,support.HighestPoint()+.35f,-.15f),stone.transform.rotation),Is.True);
+            input.FollowSpeed=10;yield return new WaitForSeconds(.8f);
+            AssertAimedAt(stone.transform.position);
+            var lines=root.GetComponentsInChildren<LineRenderer>();
+            var stem=System.Array.Find(lines,l=>l.name=="Drop guide");
+            var ring=System.Array.Find(lines,l=>l.name=="Selected stone outline");
+            var footprint=System.Array.Find(lines,l=>l.name=="Drop position");
+            Assert.That(stem.enabled && ring.enabled && footprint.enabled,Is.True);
+            Assert.That(stem.GetPosition(0),Is.EqualTo(stone.transform.position));
+            Assert.That(stem.GetPosition(1).y,Is.LessThan(stone.transform.position.y));
+            Assert.That(View.ReleaseButton.IsActive() && View.ReleaseButton.interactable,Is.True);
+            Assert.That(Pad().isActiveAndEnabled && Pad(true).isActiveAndEnabled,Is.True);
+            yield return Scroll(-100000);yield return null;
+            var camera=input.ViewCamera;
+            var p=stone.transform.position;
+            float pixels=Vector2.Distance(camera.WorldToScreenPoint(p),camera.WorldToScreenPoint(p+camera.transform.right*ring.startWidth));
+            Assert.That(pixels,Is.GreaterThanOrEqualTo(1.9f),"Guide retains a visible screen width at the far zoom limit");
+            yield return Scroll(100000);yield return Orbit(Vector2.down*1000);
+            AssertAimedAt(stone.transform.position);
+            // Let the supporting stone topple away; collapse must not take input or target ownership.
+            support.Body.constraints=RigidbodyConstraints.None;support.Body.linearVelocity=Vector3.right*2;support.Body.WakeUp();
+            yield return new WaitForSeconds(.6f);
+            Assert.That(session.Pending,Is.SameAs(stone));AssertAimedAt(stone.transform.position);
+            Assert.That(stem.enabled && footprint.enabled,Is.True);Assert.That(View.ReleaseButton.interactable,Is.True);
+            var pad=Pad();var before=stone.transform.position;
+            pad.OnPointerDown(PadEvent(pad,Vector2.right));yield return new WaitForSeconds(.1f);pad.OnPointerUp(PadEvent(pad,Vector2.right));
+            Assert.That(Vector3.Distance(before,stone.transform.position),Is.GreaterThan(.01f));
+        }
+        [UnityTest] public IEnumerator OffscreenPendingAndCoveredLandingHaveNonBlockingDirectionCues()
+        {
+            var stone=session.Pending;var initial=input.ViewCamera.transform.position;
+            input.Adjusting=true;
+            Assert.That(session.Adjust(stone,stone.transform.position+input.ViewCamera.transform.right*3+Vector3.up,stone.transform.rotation),Is.True);
+            yield return null;yield return null;
+            var pending=View.Root.Find("Pending direction");var landing=View.Root.Find("Landing direction");
+            Assert.That(pending.gameObject.activeSelf,Is.True);Assert.That(landing.gameObject.activeSelf,Is.True);
+            Assert.That(pending.GetComponentInChildren<Text>().text,Does.Contain("→"));
+            Assert.That(input.ViewCamera.transform.position,Is.EqualTo(initial),"The cue must not move the locked camera");
+            foreach(var marker in new[]{pending,landing})
+            {
+                var p=Centre(marker);var hits=new System.Collections.Generic.List<RaycastResult>();
+                EventSystem.current.RaycastAll(new PointerEventData(EventSystem.current){position=p},hits);
+                Assert.That(hits.Exists(h=>h.gameObject.transform.IsChildOf(marker)),Is.False,"Indicators must not steal scene touches");
+                var anchor=((RectTransform)marker).anchorMin;
+                Assert.That(anchor.x,Is.InRange(.12f,.88f));Assert.That(anchor.y,Is.InRange(.40f,.75f));
+                var corners=new Vector3[4];((RectTransform)marker).GetWorldCorners(corners);
+                foreach(var corner in corners)Assert.That(RectTransformUtility.WorldToScreenPoint(null,corner).x,Is.InRange(0f,(float)Screen.width));
+            }
+            input.Adjusting=false;input.FollowSpeed=10;yield return new WaitForSeconds(.8f);
+            Assert.That(pending.gameObject.activeSelf,Is.False,"Recentered pending no longer needs a direction cue");
+            AssertAimedAt(stone.transform.position);
+            input.Modal=true;yield return null;yield return null;
+            Assert.That(landing.gameObject.activeSelf,Is.False);input.Modal=false;
+            session.Restart();yield return null;yield return null;
+            Assert.That(pending.gameObject.activeSelf,Is.False);
+        }
         sealed class DelayedFactory : IStoneFactory
         {
             public readonly System.Threading.Tasks.TaskCompletionSource<Stone> Supply = new System.Threading.Tasks.TaskCompletionSource<Stone>();

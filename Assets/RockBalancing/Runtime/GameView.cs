@@ -5,6 +5,7 @@ using UnityEngine.InputSystem.UI;
 
 namespace RockBalancing
 {
+    [DefaultExecutionOrder(300)]
     public sealed class GameView : MonoBehaviour
     {
         public GameSession Session;
@@ -16,6 +17,8 @@ namespace RockBalancing
         public Button DiscardButton { get; private set; }
         public Button ReleaseButton { get; private set; }
         Text message;
+        Text pendingEdge, dropEdge;
+        PlacementGuide guide;
         GameObject controls, confirmation;
         readonly Color ink = new Color(.16f, .22f, .23f);
         readonly Color paper = new Color(.96f, .95f, .91f, .96f);
@@ -77,6 +80,30 @@ namespace RockBalancing
             ButtonAt(dialog, "继续搭建", new Vector2(.05f,.1f), new Vector2(.48f,.35f), () => ShowRestart(false));
             ButtonAt(dialog, "重新开始", new Vector2(.52f,.1f), new Vector2(.95f,.35f), () => { Session.Restart(); ShowRestart(false); });
             confirmation.SetActive(false);
+            pendingEdge=EdgeLabel("Pending direction");
+            dropEdge=EdgeLabel("Landing direction");
+        }
+        Text EdgeLabel(string name)
+        {
+            var rect=Panel(Root,name,Vector2.one*.5f,Vector2.one*.5f,new Color(.96f,.95f,.91f,.96f),false);
+            rect.sizeDelta=new Vector2(100,28);
+            var label=Label(rect,"",Vector2.zero,Vector2.one,13);
+            rect.gameObject.SetActive(false);
+            return label;
+        }
+        void UpdateEdge(Text label,Vector3 point,string title)
+        {
+            var p=Input.ViewCamera.WorldToViewportPoint(point);
+            if(p.z<0){p.x=1-p.x;p.y=1-p.y;}
+            bool outside=p.z<=0 || p.x<.12f || p.x>.88f || p.y<.40f || p.y>.75f;
+            var rect=(RectTransform)label.transform.parent;
+            rect.gameObject.SetActive(outside && !Input.Modal);
+            if(!outside)return;
+            string direction=p.x<.12f?"←":p.x>.88f?"→":p.y<.40f?"↓":"↑";
+            label.text=title+" "+direction;
+            float margin=Mathf.Max(.12f,rect.sizeDelta.x/(2*Root.rect.width)+.02f);
+            rect.anchorMin=rect.anchorMax=new Vector2(Mathf.Clamp(p.x,margin,1-margin),Mathf.Clamp(p.y,.40f,.75f));
+            rect.anchoredPosition=Vector2.zero;
         }
         Button retryButton;
         void ShowRestart(bool show) { Input.CancelGesture(); Input.Modal = show; confirmation.SetActive(show); }
@@ -105,6 +132,21 @@ namespace RockBalancing
             HeightLabel.fontSize = Session.Stabilizing ? 28 : 44;
             ShareButton.interactable = Session.CanShare;
             message.text = Session.Feedback.Length > 0 ? Session.Feedback : "摇杆移动 · 升降调高 · 点击释放\n拖石头旋转 · 拖空白观察 · 双指缩放";
+            if(guide==null)guide=GetComponent<PlacementGuide>();
+            if(Session.Pending!=null)
+            {
+                UpdateEdge(pendingEdge,Session.Pending.transform.position,"待摆石头");
+                if(guide!=null)UpdateEdge(dropEdge,guide.DropPosition,"落点");
+                var a=(RectTransform)pendingEdge.transform.parent;
+                var b=(RectTransform)dropEdge.transform.parent;
+                if(a.gameObject.activeSelf && b.gameObject.activeSelf && Vector2.Distance(a.anchorMin,b.anchorMin)<.08f)
+                    b.anchoredPosition=Vector2.down*30;
+            }
+            else
+            {
+                pendingEdge.transform.parent.gameObject.SetActive(false);
+                dropEdge.transform.parent.gameObject.SetActive(false);
+            }
         }
         public Text Label(Transform parent, string text, Vector2 min, Vector2 max, int size, TextAnchor align = TextAnchor.MiddleCenter)
         {

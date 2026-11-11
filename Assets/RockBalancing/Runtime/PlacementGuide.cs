@@ -2,10 +2,13 @@ using UnityEngine;
 
 namespace RockBalancing
 {
+    // Read the final camera pose and pending position after input/follow this frame.
+    [DefaultExecutionOrder(200)]
     public sealed class PlacementGuide : MonoBehaviour
     {
         public GameSession Session;
         public Material Template;
+        public Vector3 DropPosition { get; private set; }
         LineRenderer stem, ring, footprint;
         Material material;
         void Start()
@@ -34,9 +37,17 @@ namespace RockBalancing
             var center=stone.transform.position;
             float bottom=Session.Ground.bounds.max.y+.004f;
             if(Physics.Raycast(center,Vector3.down,out var hit,100,~0,QueryTriggerInteraction.Ignore)) bottom=hit.point.y+.004f;
-            stem.SetPosition(0,center);stem.SetPosition(1,new Vector3(center.x,bottom,center.z));
+            DropPosition=new Vector3(center.x,bottom,center.z);
+            stem.SetPosition(0,center);stem.SetPosition(1,DropPosition);
             float radius=stone.Shape.bounds.extents.magnitude*.9f;
             var camera=Camera.main;
+            // Keep the thin guides legible when observing a high or distant stone.
+            // World-space minima retain the existing appearance at close distances.
+            float pixelSize=camera!=null ? 2*Mathf.Max(camera.nearClipPlane,
+                Vector3.Dot(center-camera.transform.position,camera.transform.forward))*
+                Mathf.Tan(camera.fieldOfView*Mathf.Deg2Rad*.5f)/Mathf.Max(1,camera.pixelHeight) : 0;
+            stem.startWidth=stem.endWidth=Mathf.Max(.008f,pixelSize*2);
+            ring.startWidth=ring.endWidth=footprint.startWidth=footprint.endWidth=Mathf.Max(.003f,pixelSize*2);
             Vector3 right=camera!=null?camera.transform.right:Vector3.right;
             Vector3 up=camera!=null?camera.transform.up:Vector3.up;
             for(int i=0;i<65;i++)

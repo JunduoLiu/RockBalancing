@@ -239,8 +239,11 @@ namespace RockBalancing
             if (!CanAdjust) return;
             var stone = Session.Pending;
             float dt = Mathf.Min(Time.deltaTime, .1f);
-            var right = Vector3.ProjectOnPlane(ViewCamera.transform.right, Vector3.up).normalized;
-            var forward = Vector3.Cross(right, Vector3.up);
+            // Use this frame's horizontal observation heading, independent of pitch,
+            // ground clearance corrections and the previous frame's camera transform.
+            var heading = Quaternion.Euler(0, yaw, 0);
+            var right = heading * Vector3.right;
+            var forward = heading * Vector3.forward;
             var direction = planar.normalized * Strength(planar.magnitude);
             if (planarStone == stone && direction != Vector2.zero)
                 Session.Adjust(stone, stone.transform.position + (right * direction.x + forward * direction.y) * (MaximumPlanarSpeed * dt), stone.transform.rotation);
@@ -251,16 +254,20 @@ namespace RockBalancing
         {
             if (Session == null || ViewCamera == null) return;
             MoveHeldStone();
-            if (!Adjusting && !(active && rotating))
+            // A scene gesture owns the observation centre until all its fingers end.
+            // Otherwise releasing a joystick while still orbiting/pinching makes the
+            // centre drift under the observing finger.
+            if (!Adjusting && !active && pinch <= 0)
             {
+                float follow = 1 - Mathf.Exp(-FollowSpeed * Time.deltaTime);
                 if(panorama)
                 {
                     float height=ObservationHeight();
-                    target=Vector3.Lerp(target,new Vector3(0,Session.BaseTop+height*.5f,0),Time.deltaTime*FollowSpeed);
+                    target=Vector3.Lerp(target,new Vector3(0,Session.BaseTop+height*.5f,0),follow);
                     distance=Mathf.Max(distance,FramingDistance(height));
                 }
                 else if(Session.Pending!=null && !Session.Pending.Released)
-                    target=Vector3.Lerp(target,Session.Pending.transform.position,Time.deltaTime*FollowSpeed);
+                    target=Vector3.Lerp(target,Session.Pending.transform.position,follow);
             }
             PlaceCamera();
         }

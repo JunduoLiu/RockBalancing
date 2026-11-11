@@ -17,13 +17,15 @@ The rules are defined in [specification #9](https://github.com/JunduoLiu/RockBal
 
 ## Editor and browser
 
+The camera holds its observation centre while adjusting a stone or holding a scene gesture. Once both end, it smoothly recentres on the pending stone (`FollowSpeed=2 / s`). Release/discard hold the view during supply, then smoothly acquire the next pending stone. Joystick directions use the current horizontal orbit heading, including at high pitch. Pending-stone and landing-point direction cues appear when those points leave the clear play area; the cues do not capture touches. See the [continuous operation demo and regression record](../../docs/experiments/issue-25-transitions.md).
+
 Use `Rock Balancing > Update scene assets` after changing fonts or material templates. The referenced material assets keep the runtime shaders available in builds. `Portrait preview` sets a 430 × 900 Game View.
 
 Install the matching Unity Web Build Support module and restart the Editor, then invoke `RockBalancing.Editor.BuildGame.BuildWeb` through the Unity Pipeline `script eval` command, or use that method as a batch-mode execute method. Output is `Builds/Web`. The build uses the included `RockBalance` Web template, Gzip compression and Unity's decompression fallback so static hosts do not need custom compression headers. Upload the complete output directory to an HTTPS static host; do not open `index.html` as a local file. The builder checks that the page, loader, data, framework and WebAssembly output are present before reporting success.
 
 The Web template composes a portrait card with the captured millimetre value, full scene and a QR code pointing to the current game URL. Supported browsers offer a second, explicit system-share button so the browser has a fresh user gesture. Save-image and copy-link controls remain available. Failed generation retries the original captured image; restarting invalidates previous callbacks.
 
-Run Play Mode tests filtered to `RockBalancing` through Unity Test Runner or Pipeline. Run the browser bridge contract tests with `node --test tools/share.test.cjs` from the repository root. These checks do not replace device acceptance on iPhone 15 Pro Chrome, including first-load timing, 15-minute play, system sharing and background/resume.
+Run Play Mode tests filtered to `RockBalancing` through Unity Test Runner or Pipeline. Run the browser bridge contract tests with `node --test tools/share.test.cjs` from the repository root. These checks do not replace the iPhone + Chrome acceptance in #26: stacking experience, the continuous control loop, and height/share/restart regression, as scoped by #27.
 
 ## Stone distribution
 
