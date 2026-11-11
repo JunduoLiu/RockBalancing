@@ -1,0 +1,5 @@
+{
+  "name": "RockBalancing.Runtime",
+  "rootNamespace": "RockBalancing",
+  "references": ["Unity.InputSystem", "Unity.ugui"]
+}
