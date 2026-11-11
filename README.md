@@ -2,7 +2,7 @@
 
 面向手机浏览器的轻量 Unity 3D 叠石头小游戏。首版玩法已实现，正在进行设备验收。
 
-[打开公开测试版](https://rock-balance-playtest-20261110.burblingcrow1.chatgpt.site/)（无需登录）。当前网页构建对应 `ca8a358`，详细交付与验收记录见 [PR #21](https://github.com/JunduoLiu/RockBalancing/pull/21) 和 [Issue #20](https://github.com/JunduoLiu/RockBalancing/issues/20)。
+[打开公开测试版](https://rock-balance-playtest-20261110.burblingcrow1.chatgpt.site/)（无需登录）。当前为站点版本 **2**，游戏构建对应 `0348d9c`，包含 #22–25 的扁石、摇杆、独立释放及三维观察迭代。见[本轮构建与桌面预检证据](docs/experiments/issue-26-web-preflight.md)和 [Issue #26](https://github.com/JunduoLiu/RockBalancing/issues/26)；三项 iPhone＋Chrome 真机验收待测，[PR #21](https://github.com/JunduoLiu/RockBalancing/pull/21) 仍为草稿且未合并。
 
 ## 打开 Unity 项目
 
