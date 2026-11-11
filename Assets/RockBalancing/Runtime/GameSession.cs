@@ -41,6 +41,7 @@ namespace RockBalancing
         public Collider Ground { get; private set; }
         public float BaseTop => Base == null ? 0 : Base.bounds.max.y;
         public event Action Restarted;
+        public event Action PendingChanged;
 
         void LateUpdate() { RefreshState(); }
         public void RefreshState()
@@ -125,7 +126,11 @@ namespace RockBalancing
                 if(!PlacementValid(stone,stone.transform.position,stone.transform.rotation))
                 { Destroy(stone.gameObject); Feedback="等待下一颗 · 点击重试"; return; }
                 stone.Session = this;
+                // Preview poses are driven every render frame, not by physics.
+                // Interpolation would restore an older physics pose between inputs.
+                stone.Body.interpolation = RigidbodyInterpolation.None;
                 Pending = stone;
+                PendingChanged?.Invoke();
                 stones.Add(stone);
                 Feedback = "";
             }
@@ -202,7 +207,9 @@ namespace RockBalancing
             expected.Released = true;
             expected.Shape.isTrigger = false;
             expected.Body.isKinematic = false;
+            expected.Body.interpolation = RigidbodyInterpolation.Interpolate;
             Pending = null;
+            PendingChanged?.Invoke();
             _ = RequestNextAsync();
             return true;
         }

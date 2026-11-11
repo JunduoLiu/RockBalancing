@@ -4,13 +4,16 @@ Open `Scenes/Balance.unity` and enter Play Mode. The scene creates its camera, b
 
 ## Controls
 
-- Drag the selected stone to rotate it. The bottom pads separately adjust its horizontal position and height.
-- Tap empty world space to release. Letting go of a drag never releases a stone.
+- Hold the bottom joystick away from its centre to move horizontally; a larger offset moves faster. Return to centre or let go to stop. The separate lift control works the same way vertically, and both controls can be held together.
+- Drag the selected stone to rotate it without changing its position or release height.
+- Press **释放 / Release** to drop the selected stone and receive the next one. Empty-space taps and ending any drag never release. Rapid repeat clicks are ignored; release and discard bind to the stone selected when the button was pressed.
 - Drag empty world space to orbit; pinch to zoom. The mouse wheel also zooms in the Editor.
 - Discard throws the selected stone beside the base. A stone disappears at its first contact with the surrounding ground.
 - Restart requires confirmation. Share captures the current height and complete scene before displaying a preview.
 
-The rules are defined in [specification #9](https://github.com/JunduoLiu/RockBalancing/issues/9). Runtime code does not store a high score or serialized session.
+The rules are defined in [specification #9](https://github.com/JunduoLiu/RockBalancing/issues/9), with the joystick and release-button interaction superseded by [incremental specification #27](https://github.com/JunduoLiu/RockBalancing/issues/27). Runtime code does not store a high score or serialized session.
+
+`GameInput` exposes joystick dead zone (default 12%), maximum horizontal speed (0.35 m/s), maximum lift speed (0.45 m/s), and repeat-action delay (0.4 s). Diagonal input is capped to the same speed. UI touches are assigned at touch-down and never participate in scene pinching. Focus loss, cancellation, dialogs, release, discard and restart clear held input; all old touches must end before fresh input controls a new stone. Adjustments and release use the session's collision checks; rejected release keeps the current stone available for correction.
 
 ## Editor and browser
 

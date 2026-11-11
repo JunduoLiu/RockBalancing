@@ -5,30 +5,55 @@ using UnityEngine.InputSystem;
 
 namespace RockBalancing
 {
+    [DefaultExecutionOrder(100)]
     public sealed class GameInput : MonoBehaviour
     {
         public GameSession Session;
         public Camera ViewCamera;
-        public bool Modal;
+        bool modal;
+        public bool Modal
+        {
+            get => modal;
+            set { if (value && !modal) CancelForFocusLoss(); modal = value; }
+        }
         public bool Adjusting;
         [Min(.01f)] public float RotationSensitivity=.45f;
         [Min(.01f)] public float OrbitSensitivity=.25f;
-        [Min(.01f)] public float PlanarSensitivity=2;
-        [Min(.01f)] public float HeightSensitivity=3;
+        [Range(0, .9f)] public float JoystickDeadZone=.12f;
+        [Min(.01f)] public float MaximumPlanarSpeed=.35f;
+        [Min(.01f)] public float MaximumHeightSpeed=.45f;
+        [Min(.1f)] public float ActionRepeatDelay=.4f;
         [Min(.01f)] public float FollowSpeed=2;
         [Min(.1f)] public float MinimumZoom=.7f;
         [Min(1)] public float MaximumZoom=40;
         float yaw = 25, distance = 3.8f, targetY = .3f;
         Vector2 start, previous;
-        double downTime;
         bool active, dragged, blocked, rotating;
         bool requireNeutral;
         Stone selected;
         int touchId = -1;
         float pinch;
+        Vector2 planar;
+        float lift;
+        Stone planarStone, liftStone;
+        double nextActionTime;
+        readonly Dictionary<int, bool> controlTouches = new Dictionary<int, bool>();
+        readonly HashSet<int> liveTouches = new HashSet<int>();
+        readonly List<int> endedTouches = new List<int>();
         readonly List<RaycastResult> uiHits = new List<RaycastResult>();
 
-        public void ResetView() { yaw = 25; distance = 3.8f; targetY = .3f; CancelGesture(); }
+        void Start()
+        {
+            Session.PendingChanged += CancelForStoneChange;
+            Session.Restarted += ResetView;
+        }
+        void OnDestroy()
+        {
+            if (Session == null) return;
+            Session.PendingChanged -= CancelForStoneChange;
+            Session.Restarted -= ResetView;
+        }
+        public void ResetView() { yaw = 25; distance = 3.8f; targetY = .3f; CancelForFocusLoss(); }
         public void Panorama()
         {
             float height=ObservationHeight();
@@ -47,21 +72,49 @@ namespace RockBalancing
         public void CancelForFocusLoss(string unused="")
         {
             CancelGesture();requireNeutral=true;
-            foreach(var pad in GetComponentsInChildren<DragPad>())pad.Cancel();
+            planar=Vector2.zero;lift=0;planarStone=null;liftStone=null;Adjusting=false;
+            foreach(var pad in GetComponentsInChildren<DragPad>(true))pad.Cancel();
+            foreach(var button in GetComponentsInChildren<StoneActionButton>(true))button.Cancel();
+        }
+        void CancelForStoneChange() => CancelForFocusLoss();
+        public bool CanAdjust => !Modal && !requireNeutral && Session != null && Session.Pending != null;
+        public bool CanAct => CanAdjust && Time.unscaledTimeAsDouble >= nextActionTime;
+        public bool ActOnStone(Stone expected, bool discard)
+        {
+            if (!CanAct || expected == null || expected != Session.Pending) return false;
+            CancelForFocusLoss();
+            nextActionTime = Time.unscaledTimeAsDouble + ActionRepeatDelay;
+            return discard ? Session.Discard(expected) : Session.Release(expected);
         }
 
         void Update()
         {
-            if (Modal) { CancelGesture(); return; }
+            if (Modal) return;
             var touch = Touchscreen.current;
-            int count = 0;
+            int count = 0, total = 0;
+            bool canceled = false;
+            liveTouches.Clear();
             UnityEngine.InputSystem.Controls.TouchControl first = null, second = null;
             if (touch != null)
                 foreach (var t in touch.touches)
-                    if (t.press.isPressed) { if (count == 0) first = t; else if(count == 1) second = t; count++; }
+                {
+                    int id = t.touchId.ReadValue();
+                    if (controlTouches.ContainsKey(id) && t.phase.ReadValue() == UnityEngine.InputSystem.TouchPhase.Canceled) canceled = true;
+                    if (!t.press.isPressed) continue;
+                    total++; liveTouches.Add(id);
+                    if (!controlTouches.TryGetValue(id, out bool control))
+                        controlTouches[id] = control = IsUI(t.position.ReadValue());
+                    if (control) continue;
+                    if (count == 0) first = t; else if(count == 1) second = t;
+                    count++;
+                }
+            endedTouches.Clear();
+            foreach (var pair in controlTouches) if (!liveTouches.Contains(pair.Key)) endedTouches.Add(pair.Key);
+            foreach (int id in endedTouches) controlTouches.Remove(id);
+            if (canceled) { CancelForFocusLoss(); return; }
             if(requireNeutral)
             {
-                if(count==0 && (Mouse.current==null || !Mouse.current.leftButton.isPressed))requireNeutral=false;
+                if(total==0 && (Mouse.current==null || !Mouse.current.leftButton.isPressed))requireNeutral=false;
                 return;
             }
             if (count >= 2)
@@ -90,6 +143,7 @@ namespace RockBalancing
                 }
                 End(end);touchId=-1;return;
             }
+            if (total > 0) return;
             var mouse = Mouse.current;
             if (mouse == null) return;
             var p = mouse.position.ReadValue();
@@ -102,7 +156,6 @@ namespace RockBalancing
         void Begin(Vector2 position)
         {
             start = previous = position;
-            downTime = Time.unscaledTimeAsDouble;
             dragged = false;
             blocked = IsUI(position);
             active = !blocked;
@@ -139,30 +192,41 @@ namespace RockBalancing
         }
         void End(Vector2 p)
         {
-            dragged |= (p-start).magnitude > Mathf.Max(8,Screen.height*.008f);
-            if (active && !blocked && !rotating && !dragged && Time.unscaledTimeAsDouble - downTime < .35 && !IsUI(p))
-                Session.Release(selected);
             active = false;
             selected = null;
         }
-        public void MoveStone(Vector2 delta)
+        public void HoldPlanar(bool held)
         {
-            if(Modal||pinch>0||requireNeutral)return;
-            var stone = Session.Pending;
-            if (stone == null) return;
-            var right = Vector3.ProjectOnPlane(ViewCamera.transform.right, Vector3.up).normalized;
-            var forward = Vector3.ProjectOnPlane(ViewCamera.transform.forward, Vector3.up).normalized;
-            Session.Adjust(stone, stone.transform.position + (right * delta.x + forward * delta.y) * PlanarSensitivity, stone.transform.rotation);
+            planarStone = held && CanAdjust ? Session.Pending : null;
+            if (planarStone == null) planar = Vector2.zero;
+            Adjusting = planarStone != null || liftStone != null;
         }
-        public void RaiseStone(Vector2 delta)
+        public void HoldHeight(bool held)
         {
-            if(Modal||pinch>0||requireNeutral)return;
+            liftStone = held && CanAdjust ? Session.Pending : null;
+            if (liftStone == null) lift = 0;
+            Adjusting = planarStone != null || liftStone != null;
+        }
+        public void MoveStone(Vector2 offset) { planar = Vector2.ClampMagnitude(offset, 1); }
+        public void RaiseStone(Vector2 offset) { lift = Mathf.Clamp(offset.y, -1, 1); }
+        float Strength(float magnitude) => Mathf.Clamp01((magnitude - JoystickDeadZone) / Mathf.Max(.01f, 1 - JoystickDeadZone));
+        void MoveHeldStone()
+        {
+            if (!CanAdjust) return;
             var stone = Session.Pending;
-            if (stone != null) Session.Adjust(stone, stone.transform.position + Vector3.up * (delta.y * HeightSensitivity), stone.transform.rotation);
+            float dt = Mathf.Min(Time.deltaTime, .1f);
+            var right = Vector3.ProjectOnPlane(ViewCamera.transform.right, Vector3.up).normalized;
+            var forward = Vector3.Cross(right, Vector3.up);
+            var direction = planar.normalized * Strength(planar.magnitude);
+            if (planarStone == stone && direction != Vector2.zero)
+                Session.Adjust(stone, stone.transform.position + (right * direction.x + forward * direction.y) * (MaximumPlanarSpeed * dt), stone.transform.rotation);
+            if (liftStone == stone && Strength(Mathf.Abs(lift)) > 0)
+                Session.Adjust(stone, stone.transform.position + Vector3.up * (Mathf.Sign(lift) * Strength(Mathf.Abs(lift)) * MaximumHeightSpeed * dt), stone.transform.rotation);
         }
         void LateUpdate()
         {
             if (Session == null || ViewCamera == null) return;
+            MoveHeldStone();
             if (!Adjusting && !(active && rotating))
             {
                 float height=ObservationHeight();
@@ -175,5 +239,6 @@ namespace RockBalancing
         }
         void OnApplicationFocus(bool focus) { if (!focus) CancelForFocusLoss(); }
         void OnApplicationPause(bool pause) { if (pause) CancelForFocusLoss(); }
+        void OnDisable() { CancelForFocusLoss(); }
     }
 }
