@@ -35,7 +35,7 @@ namespace RockBalancing
         }
         public override void OnSubmit(BaseEventData e)
         {
-            if (IsInteractable()) Input.ActOnStone(Input.Session.Pending, Discard);
+            // Release/discard require an explicit pointer click, never Enter/Space.
         }
         public void Cancel() { selected = null; pointer = int.MinValue; }
         public override void OnPointerExit(PointerEventData e) { Cancel(); base.OnPointerExit(e); }

@@ -39,6 +39,8 @@ namespace RockBalancing
             Root = canvasObject.GetComponent<RectTransform>();
             if (FindFirstObjectByType<EventSystem>() == null)
                 new GameObject("Event System", typeof(EventSystem), typeof(InputSystemUIInputModule)).transform.SetParent(transform);
+            // WASD/arrows belong to stone adjustment, not UI selection/submission.
+            EventSystem.current.sendNavigationEvents = false;
             HeightLabel = Label(Root, "", new Vector2(.06f,.87f), new Vector2(.63f,.98f), 44, TextAnchor.MiddleLeft);
             var feedback = Panel(Root,"Temporary feedback",new Vector2(.06f,.27f),new Vector2(.94f,.34f),paper,false);
             feedbackPanel = feedback.gameObject;

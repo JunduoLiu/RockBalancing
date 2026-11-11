@@ -8,7 +8,7 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function setup({supported=true,share=async()=>{},clipboard=async()=>{},failedImages=0,delayImages=false}={}) {
   const ids=['share-panel','share-image','share-save','share-system','share-message','share-retry','share-close','share-copy','share-link'];
   const elements=Object.fromEntries(ids.map(id=>[id,{hidden:true,disabled:false,textContent:'',removeAttribute(key){delete this[key];},focus(){},select(){}}]));
-  const blobs=new Map(),revoked=[],images=[],labels=[],draws=[],links=[],shares=[],copied=[];
+  const blobs=new Map(),revoked=[],images=[],labels=[],draws=[],links=[],shares=[],copied=[],focus=[];
   let next=0;
   class MockURL extends URL {
     static createObjectURL(blob){const id='blob:'+ ++next;blobs.set(id,blob);return id;}
@@ -16,13 +16,14 @@ function setup({supported=true,share=async()=>{},clipboard=async()=>{},failedIma
   }
   const context={fillRect(){},fillText(text){labels.push(text);},drawImage(image){draws.push(image.src);}};
   const host={location:{href:'https://game.example/play/?test=1#top'},addEventListener(){},qrcode(){return{addData(link){links.push(link);},make(){},getModuleCount(){return 21;},isDark(){return true;}};}};
+  host.RockInput={suspend:()=>focus.push('suspend'),resume:()=>focus.push('resume')};
   class MockImage {
     set src(value){this._src=value;images.push(this);if(!delayImages)queueMicrotask(()=>{if(failedImages-->0)this.onerror();else this.onload();});}
     get src(){return this._src;}
   }
   const navigator={canShare:()=>supported,share:async data=>{shares.push(data);return share(data);},clipboard:{writeText:async text=>{copied.push(text);return clipboard(text);}}};
   vm.runInNewContext(source,{window:host,document:{getElementById:id=>elements[id],createElement:()=>({getContext:()=>context,toBlob:callback=>callback(new Blob(['card'],{type:'image/png'}))})},URL:MockURL,Image:MockImage,Blob,File,navigator});
-  return {api:host.RockShare,e:elements,blobs,revoked,images,labels,draws,links,shares,copied};
+  return {api:host.RockShare,e:elements,blobs,revoked,images,labels,draws,links,shares,copied,focus};
 }
 test('one operation owns immutable source bytes, height and QR URL',async()=>{
   const app=setup();const bytes=new Uint8Array([1,2,3]);
@@ -76,4 +77,10 @@ test('completion of a cancelled system dialog cannot unlock the newer one',async
   app.api.open(new Uint8Array([2]),0,2,()=>{});await tick();const current=app.e['share-system'].onclick();
   pending[0]();await old;assert.equal(app.e['share-system'].disabled,true);assert.equal(app.e['share-panel'].hidden,false);
   pending[1]();await current;assert.equal(app.e['share-panel'].hidden,true);
+});
+
+test('opening and closing share transfers operation focus exactly once',async()=>{
+  const app=setup();app.api.open(new Uint8Array([8]),0,1,()=>{});await tick();
+  assert.deepEqual(app.focus,['suspend']);app.e['share-close'].onclick();
+  assert.deepEqual(app.focus,['suspend','resume']);app.api.cancel();assert.deepEqual(app.focus,['suspend','resume']);
 });

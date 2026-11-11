@@ -29,6 +29,7 @@
   </section>
   <script src="qrcode.js"></script>
   <script src="share.js"></script>
+  <script src="input.js"></script>
   <script>
     const canvas=document.getElementById('unity-canvas');
     const config={
@@ -46,14 +47,11 @@
     function fail(message){document.getElementById('loading').hidden=false;document.getElementById('load-message').textContent='加载失败，请刷新重试。'+message;}
     const script=document.createElement('script');script.src='Build/{{{ LOADER_FILENAME }}}';
     script.onerror=()=>fail('无法连接游戏文件。');
-    script.onload=()=>createUnityInstance(canvas,config,p=>{document.getElementById('load-progress').value=p;}).then(instance=>{window.gameInstance=instance;document.getElementById('loading').hidden=true;}).catch(error=>fail(String(error)));
+    script.onload=()=>createUnityInstance(canvas,config,p=>{document.getElementById('load-progress').value=p;}).then(instance=>{window.gameInstance=instance;window.RockInput.ready();document.getElementById('loading').hidden=true;}).catch(error=>fail(String(error)));
     document.body.appendChild(script);
     canvas.addEventListener('contextmenu',e=>e.preventDefault());
     canvas.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
-    function cancelGesture(){if(window.gameInstance)window.gameInstance.SendMessage('Rock Balancing','CancelForFocusLoss','');}
-    document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelGesture();});
-    window.addEventListener('blur',cancelGesture);
-    canvas.addEventListener('pointercancel',cancelGesture);
+
     document.addEventListener('gesturestart',e=>e.preventDefault(),{passive:false});
   </script>
 </body>

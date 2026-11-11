@@ -5,15 +5,16 @@ Open `Scenes/Balance.unity` and enter Play Mode. The scene creates its camera, b
 ## Controls
 
 - Hold the bottom joystick away from its centre to move horizontally; a larger offset moves faster. Return to centre or let go to stop. The separate lift control works the same way vertically, and both controls can be held together.
+- On a desktop keyboard, hold **W/A/S/D** to move along the current horizontal observation heading, and **Up/Down** to raise/lower the release height. Both work together. Opposing keys cancel and diagonal movement is capped. Click the game to regain operation focus after using other page controls.
 - Drag the selected stone to rotate it without changing its position or release height.
-- Press **释放 / Release** to drop the selected stone and receive the next one. Empty-space taps and ending any drag never release. Rapid repeat clicks are ignored; release and discard bind to the stone selected when the button was pressed.
-- Drag empty world space to orbit; pinch to zoom. The mouse wheel also zooms in the Editor.
+- Press **释放 / Release** to drop the selected stone and receive the next one. Empty-space taps and ending any drag never release. Enter/Space do not release or discard. Rapid repeat clicks are ignored; release and discard bind to the stone selected when the button was pressed.
+- Drag empty world space to orbit; pinch to zoom. The mouse wheel also zooms in desktop browsers and the Editor.
 - Discard throws the selected stone beside the base. A stone disappears at its first contact with the surrounding ground.
 - The four main actions use Lucide icons: circular arrow = restart, connected nodes = share, down arrow onto a line = release, trash = discard. Desktop hover shows the action name. Touch targets stay at least 48 screen pixels in small windows. Pressed and unavailable states change contrast; disabled actions also dim the icon. Restart still requires the textual confirmation. Share captures the current height and complete scene before displaying a preview.
 
 The rules are defined in [specification #9](https://github.com/JunduoLiu/RockBalancing/issues/9), with the joystick and release-button interaction superseded by [incremental specification #27](https://github.com/JunduoLiu/RockBalancing/issues/27). Runtime code does not store a high score or serialized session.
 
-`GameInput` exposes joystick dead zone (default 12%), maximum horizontal speed (0.35 m/s), maximum lift speed (0.45 m/s), and repeat-action delay (0.4 s). Diagonal input is capped to the same speed. UI touches are assigned at touch-down and never participate in scene pinching. Focus loss, cancellation, dialogs, release, discard and restart clear held input; all old touches must end before fresh input controls a new stone. Adjustments and release use the session's collision checks; rejected release keeps the current stone available for correction.
+`GameInput` exposes joystick dead zone (default 12%), maximum horizontal speed (0.35 m/s), maximum lift speed (0.45 m/s), and repeat-action delay (0.4 s). Diagonal input is capped to the same speed. UI touches are assigned at touch-down and never participate in scene pinching. Focus loss, cancellation, dialogs, release, discard and restart clear held input; all old touches, mouse presses, and movement keys must end before fresh input controls a new stone. Browser focus loss, tab switching, and Ctrl/Alt/Meta shortcuts cancel movement; held-key repeats after returning cannot restart it. HTML share controls retain their own keyboard focus, and gameplay arrow keys do not scroll the page. Keyboard and pad inputs share the same per-axis speed caps rather than doubling movement. Adjustments and release use the session's collision checks; rejected release keeps the current stone available for correction.
 
 ## Editor and browser
 
@@ -25,7 +26,7 @@ Install the matching Unity Web Build Support module and restart the Editor, then
 
 The Web template composes a portrait card with the captured millimetre value, full scene and a QR code pointing to the current game URL. Supported browsers offer a second, explicit system-share button so the browser has a fresh user gesture. Save-image and copy-link controls remain available. Failed generation retries the original captured image; restarting invalidates previous callbacks.
 
-Run Play Mode tests filtered to `RockBalancing` through Unity Test Runner or Pipeline. Run the browser bridge contract tests with `node --test tools/share.test.cjs` from the repository root. These checks do not replace the iPhone + Chrome acceptance in #26: stacking experience, the continuous control loop, and height/share/restart regression, as scoped by #27.
+Run Play Mode tests filtered to `RockBalancing` through Unity Test Runner or Pipeline. Run the browser bridge contract tests with `node --test tools/input.test.cjs tools/share.test.cjs` from the repository root. These checks do not replace the iPhone + Chrome acceptance in #26: stacking experience, the continuous control loop, and height/share/restart regression, as scoped by #27.
 
 ## Stone distribution
 

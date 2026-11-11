@@ -8,6 +8,7 @@
     const old=active;active=null;
     if(old){old.cancelled=true;if(old.sourceUrl)URL.revokeObjectURL(old.sourceUrl);if(old.cardUrl)URL.revokeObjectURL(old.cardUrl);}
     element('share-panel').hidden=true;
+    if(old&&host.RockInput)host.RockInput.resume();
     element('share-image').removeAttribute('src');
     element('share-save').removeAttribute('href');
     if(notify&&old)old.closed();
@@ -57,6 +58,7 @@
       operation.sourceUrl=URL.createObjectURL(new Blob([operation.bytes],{type:'image/png'}));
       active=operation;
       element('share-panel').hidden=false;
+      if(host.RockInput)host.RockInput.suspend();
       element('share-system').disabled=false;
       element('share-system').hidden=true;element('share-save').hidden=true;element('share-link').hidden=true;
       generate(operation);return true;

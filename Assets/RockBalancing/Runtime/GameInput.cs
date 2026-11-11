@@ -35,6 +35,10 @@ namespace RockBalancing
         Vector2 start, previous;
         bool active, dragged, blocked, rotating;
         bool requireNeutral;
+        bool focusLost, paused, browserFocused = true;
+        Vector2 keyboardPlanar;
+        float keyboardLift;
+        bool keyboardHeld;
         Stone selected;
         int touchId = -1;
         float pinch;
@@ -49,6 +53,10 @@ namespace RockBalancing
 
         void Start()
         {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // Let HTML share controls and other page content own their own keys.
+            WebGLInput.captureAllKeyboardInput = false;
+#endif
             Occlusion = gameObject.AddComponent<ObservationOcclusion>();
             Occlusion.Initialize(Session);
             Session.PendingChanged += CancelForStoneChange;
@@ -71,12 +79,13 @@ namespace RockBalancing
         public void CancelForFocusLoss(string unused="")
         {
             CancelGesture();requireNeutral=true;
+            keyboardPlanar=Vector2.zero;keyboardLift=0;keyboardHeld=false;
             planar=Vector2.zero;lift=0;planarStone=null;liftStone=null;Adjusting=false;
             foreach(var pad in GetComponentsInChildren<DragPad>(true))pad.Cancel();
             foreach(var button in GetComponentsInChildren<StoneActionButton>(true))button.Cancel();
         }
         void CancelForStoneChange() => CancelForFocusLoss();
-        public bool CanAdjust => !Modal && !requireNeutral && Session != null && Session.Pending != null;
+        public bool CanAdjust => !Modal && !focusLost && !paused && browserFocused && !requireNeutral && Session != null && Session.Pending != null;
         public bool CanAct => CanAdjust && Time.unscaledTimeAsDouble >= nextActionTime;
         public bool ActOnStone(Stone expected, bool discard)
         {
@@ -88,7 +97,13 @@ namespace RockBalancing
 
         void Update()
         {
-            if (Modal) return;
+            if (Modal || focusLost || paused || !browserFocused) return;
+            var keyboard=Keyboard.current;
+            if(keyboard!=null && (keyboard.ctrlKey.isPressed || keyboard.altKey.isPressed || keyboard.leftMetaKey.isPressed || keyboard.rightMetaKey.isPressed))
+            {
+                // Browser/OS shortcuts must not leave a previously held move running.
+                CancelForFocusLoss();return;
+            }
             var touch = Touchscreen.current;
             int count = 0, total = 0;
             bool canceled = false;
@@ -113,9 +128,10 @@ namespace RockBalancing
             if (canceled) { CancelForFocusLoss(); return; }
             if(requireNeutral)
             {
-                if(total==0 && (Mouse.current==null || !Mouse.current.leftButton.isPressed))requireNeutral=false;
+                if(total==0 && (Mouse.current==null || !Mouse.current.leftButton.isPressed) && !MovementKeyHeld())requireNeutral=false;
                 return;
             }
+            ReadKeyboard();
             if (count >= 2)
             {
                 active = false;
@@ -153,6 +169,29 @@ namespace RockBalancing
             if(scroll!=0) Zoom(distance - scroll * .0015f);
         }
 
+        static bool MovementKeyHeld()
+        {
+            var keys=Keyboard.current;
+            return keys!=null && (keys.wKey.isPressed || keys.aKey.isPressed || keys.sKey.isPressed || keys.dKey.isPressed || keys.upArrowKey.isPressed || keys.downArrowKey.isPressed);
+        }
+        void ReadKeyboard()
+        {
+            var keys=Keyboard.current;
+            keyboardHeld=CanAdjust && MovementKeyHeld();
+            keyboardPlanar=keyboardHeld ? Vector2.ClampMagnitude(new Vector2(
+                (keys.dKey.isPressed?1:0)-(keys.aKey.isPressed?1:0),
+                (keys.wKey.isPressed?1:0)-(keys.sKey.isPressed?1:0)),1) : Vector2.zero;
+            keyboardLift=keyboardHeld ? (keys.upArrowKey.isPressed?1:0)-(keys.downArrowKey.isPressed?1:0) : 0;
+        }
+        // Called by the Web template when the canvas gains/loses operation focus.
+        public void SetBrowserInputFocus(string focused)
+        {
+            bool next=focused=="1";
+            if(next==browserFocused)return;
+            browserFocused=next;
+            CancelForFocusLoss();
+            if(!next && Keyboard.current!=null) InputSystem.ResetDevice(Keyboard.current);
+        }
         void Zoom(float value)
         {
             distance=Mathf.Clamp(value, Mathf.Max(.1f,MinimumZoom), Mathf.Max(MinimumZoom,MaximumZoom));
@@ -242,11 +281,15 @@ namespace RockBalancing
             var heading = Quaternion.Euler(0, yaw, 0);
             var right = heading * Vector3.right;
             var forward = heading * Vector3.forward;
-            var direction = planar.normalized * Strength(planar.magnitude);
-            if (planarStone == stone && direction != Vector2.zero)
+            // Combine sources once, so simultaneous touch/mouse pads and keyboard
+            // never double the speed. Opposing inputs cancel on each axis.
+            var padDirection = planarStone==stone ? planar.normalized * Strength(planar.magnitude) : Vector2.zero;
+            var direction = Vector2.ClampMagnitude(padDirection+keyboardPlanar,1);
+            if (direction != Vector2.zero)
                 Session.Adjust(stone, stone.transform.position + (right * direction.x + forward * direction.y) * (MaximumPlanarSpeed * dt), stone.transform.rotation);
-            if (liftStone == stone && Strength(Mathf.Abs(lift)) > 0)
-                Session.Adjust(stone, stone.transform.position + Vector3.up * (Mathf.Sign(lift) * Strength(Mathf.Abs(lift)) * MaximumHeightSpeed * dt), stone.transform.rotation);
+            float heightInput=Mathf.Clamp((liftStone==stone ? Mathf.Sign(lift)*Strength(Mathf.Abs(lift)) : 0)+keyboardLift,-1,1);
+            if(heightInput!=0)
+                Session.Adjust(stone, stone.transform.position + Vector3.up * (heightInput * MaximumHeightSpeed * dt), stone.transform.rotation);
         }
         void LateUpdate()
         {
@@ -255,7 +298,7 @@ namespace RockBalancing
             // A scene gesture owns the observation centre until all its fingers end.
             // Otherwise releasing a joystick while still orbiting/pinching makes the
             // centre drift under the observing finger.
-            if (!Adjusting && !active && pinch <= 0)
+            if (!Adjusting && !keyboardHeld && !active && pinch <= 0)
             {
                 float follow = 1 - Mathf.Exp(-FollowSpeed * Time.deltaTime);
                 if(Session.Pending!=null && !Session.Pending.Released)
@@ -306,8 +349,8 @@ namespace RockBalancing
             if (Occlusion != null) Occlusion.UpdateView(ViewCamera, clearance);
 
         }
-        void OnApplicationFocus(bool focus) { if (!focus) CancelForFocusLoss(); }
-        void OnApplicationPause(bool pause) { if (pause) CancelForFocusLoss(); }
+        void OnApplicationFocus(bool focus) { focusLost=!focus; if (!focus) CancelForFocusLoss(); }
+        void OnApplicationPause(bool pause) { paused=pause; if (pause) CancelForFocusLoss(); }
         void OnDisable() { CancelForFocusLoss(); }
     }
 }
