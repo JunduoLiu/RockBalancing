@@ -175,7 +175,20 @@ namespace RockBalancing
             foreach (var other in Physics.OverlapSphere(position,radius,~0,QueryTriggerInteraction.Ignore))
             {
                 if (other == stone.Shape) continue;
-                if (Physics.ComputePenetration(stone.Shape,position,rotation,other,other.transform.position,other.transform.rotation,
+                var otherPosition = other.transform.position;
+                var otherRotation = other.transform.rotation;
+                var body = other.attachedRigidbody;
+                if (body != null)
+                {
+                    // Broadphase queries use the current physics pose, while an
+                    // interpolated Transform can still show the previous frame.
+                    // Use that same physics pose for the narrowphase, including
+                    // a child collider's offset from its rigidbody.
+                    var correction = body.rotation * Quaternion.Inverse(body.transform.rotation);
+                    otherPosition = body.position + correction * (otherPosition - body.transform.position);
+                    otherRotation = correction * otherRotation;
+                }
+                if (Physics.ComputePenetration(stone.Shape,position,rotation,other,otherPosition,otherRotation,
                     out _,out float depth)) maximum=Mathf.Max(maximum,depth);
             }
             return maximum;

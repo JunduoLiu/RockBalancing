@@ -11,14 +11,21 @@ namespace RockBalancing
     public sealed class StoneFactory : IStoneFactory
     {
         readonly Material template;
-        public StoneFactory(Material template=null) { this.template=template; }
+        readonly StoneShapeSettings shapes;
+        readonly System.Func<int> nextSeed;
+        public StoneFactory(Material template=null, StoneShapeSettings shapes=null, System.Func<int> nextSeed=null)
+        {
+            this.template=template;
+            this.shapes=shapes ?? new StoneShapeSettings();
+            this.nextSeed=nextSeed ?? (() => Random.Range(int.MinValue, int.MaxValue));
+        }
         public Task<Stone> CreateAsync(Vector3 position, Transform parent)
         {
             var go = new GameObject("Stone", typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider));
             go.name = "Stone";
             go.transform.SetParent(parent, false);
             go.transform.position = position;
-            var mesh = PebbleMesh.Create(Random.Range(int.MinValue, int.MaxValue));
+            var mesh = PebbleMesh.Create(nextSeed(), shapes);
             go.GetComponent<MeshFilter>().sharedMesh = mesh;
             var shape = go.GetComponent<MeshCollider>();
             shape.sharedMesh = mesh;

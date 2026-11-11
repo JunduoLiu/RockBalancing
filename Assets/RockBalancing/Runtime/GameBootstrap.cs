@@ -7,6 +7,7 @@ namespace RockBalancing
         public Font Typeface;
         public Material StoneMaterial;
         public Material GuideMaterial;
+        public StoneShapeSettings StoneShapes = new StoneShapeSettings();
         readonly System.Collections.Generic.List<Material> materials=new System.Collections.Generic.List<Material>();
         void Start()
         {
@@ -40,7 +41,7 @@ namespace RockBalancing
             var view = gameObject.AddComponent<GameView>();
             view.Session = session; view.Input = input; view.Typeface = Typeface;
             view.Build();
-            session.Initialize(new StoneFactory(StoneMaterial), pedestal.GetComponent<Collider>(), ground.GetComponent<Collider>());
+            session.Initialize(new StoneFactory(StoneMaterial, StoneShapes), pedestal.GetComponent<Collider>(), ground.GetComponent<Collider>());
             var guide=gameObject.AddComponent<PlacementGuide>();
             guide.Template=GuideMaterial; guide.Session=session;
             var share=gameObject.AddComponent<ShareController>();

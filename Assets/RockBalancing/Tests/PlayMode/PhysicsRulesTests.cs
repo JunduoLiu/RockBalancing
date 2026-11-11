@@ -68,6 +68,32 @@ namespace RockBalancing.Tests
             Assert.That(session.Release(preview),Is.True);
             yield return null;
         }
+        [UnityTest] public IEnumerator ThinGeneratedStoneCannotSweepThroughOrReleaseInsideSupport()
+        {
+            session.Initialize(new StoneFactory(shapes:new StoneShapeSettings {
+                FlatProbability=1, MinimumThicknessRatio=.12f, MaximumThicknessRatio=.12f
+            },nextSeed:()=>123),pedestal,ground);
+            var first=session.Pending;
+            Assert.That(session.Adjust(first,new Vector3(0,-first.OwnedMesh.bounds.min.y+.006f,0),Quaternion.identity),Is.True);
+            Assert.That(session.Release(first),Is.True);
+            yield return Settle(150);
+            var resting=first.transform.position;
+            var preview=session.Pending;
+            Assert.That(session.Adjust(preview,new Vector3(0,-.2f,0),Quaternion.identity),Is.False);
+            Assert.That(preview.Shape.bounds.min.y,Is.GreaterThan(first.Shape.bounds.max.y-.001f));
+            Assert.That(first.transform.position,Is.EqualTo(resting));
+            // A moving obstacle entering the preview must invalidate release too.
+            first.Body.position=preview.transform.position;
+            Physics.SyncTransforms();
+            Assert.That(Physics.ComputePenetration(preview.Shape,preview.transform.position,preview.transform.rotation,
+                first.Shape,first.Body.position,first.Body.rotation,out _,out _),Is.True,"The obstacle's physical pose overlaps the preview before release");
+            Assert.That(session.Release(preview),Is.False);
+            Assert.That(session.Pending,Is.SameAs(preview));
+            Assert.That(preview.Body.isKinematic && preview.Shape.isTrigger,Is.True);
+            Assert.That(session.Adjust(preview,preview.transform.position+Vector3.up*.1f,Quaternion.identity),Is.True);
+            Assert.That(session.Release(preview),Is.True);
+            Assert.That(session.Pending,Is.Not.SameAs(preview));
+        }
         [UnityTest] public IEnumerator TranslationAndRotationStopBeforeContact()
         {
             var obstacle=Drop(new Vector3(0,.052f,0));yield return Settle();

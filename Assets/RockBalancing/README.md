@@ -22,6 +22,10 @@ The Web template composes a portrait card with the captured millimetre value, fu
 
 Run Play Mode tests filtered to `RockBalancing` through Unity Test Runner or Pipeline. Run the browser bridge contract tests with `node --test tools/share.test.cjs` from the repository root. These checks do not replace device acceptance on iPhone 15 Pro Chrome, including first-load timing, 15-minute play, system sharing and background/resume.
 
+## Stone distribution
+
+`GameBootstrap > Stone Shapes` controls the flat-stone probability (default 85%) and thickness/length ratio (default 0.18–0.28). The remaining stones keep the original irregular generator. Flat stones have actual planar support faces, the same render/collision mesh, volume-based mass, and an upright initial pose; generated stones do not change when the settings change. See the [fixed-seed comparison and physics validation](../../docs/experiments/issue-22-flat-stones.md) for the parameter choice and reproducible experiment.
+
 ## Third-party assets
 
 `Fonts/BalanceSans.ttf` is a static, reduced character subset of Google Fonts Noto Sans SC, under the included OFL licence. `tools/subset_font.py` regenerates it from `.scratch/NotoSansSC.ttf`; download the upstream variable font from `https://github.com/google/fonts/tree/main/ofl/notosanssc` and run with Python/fonttools. Include all UI strings before generating the subset.
