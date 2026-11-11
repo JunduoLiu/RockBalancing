@@ -76,7 +76,9 @@ namespace RockBalancing
             var previous=RenderTexture.active;
             try
             {
-                camera.targetTexture=target;camera.Render();
+                camera.targetTexture=target;
+                // A share always shows the complete, opaque scene, even from below.
+                using (Input.Occlusion?.OpaqueScene()) camera.Render();
                 RenderTexture.active=target;
                 var texture=new Texture2D(720,900,TextureFormat.RGB24,false);
                 texture.ReadPixels(new Rect(0,0,720,900),0,0);texture.Apply();

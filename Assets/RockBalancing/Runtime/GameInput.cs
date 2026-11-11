@@ -10,6 +10,7 @@ namespace RockBalancing
     {
         public GameSession Session;
         public Camera ViewCamera;
+        public ObservationOcclusion Occlusion { get; private set; }
         bool modal;
         public bool Modal
         {
@@ -26,8 +27,8 @@ namespace RockBalancing
         [Min(.01f)] public float FollowSpeed=2;
         [Min(.1f)] public float MinimumZoom=.7f;
         [Min(1)] public float MaximumZoom=40;
-        [Range(0, 89)] public float MinimumPitch=5;
-        [Range(0, 89)] public float MaximumPitch=85;
+        [Range(-90, 90)] public float MinimumPitch=-90;
+        [Range(-90, 90)] public float MaximumPitch=90;
         [Min(.01f)] public float CameraClearance=.08f;
         float yaw = 25, pitch = 16, distance = 3.8f;
         Vector3 target = new Vector3(0, .3f, 0);
@@ -48,6 +49,8 @@ namespace RockBalancing
 
         void Start()
         {
+            Occlusion = gameObject.AddComponent<ObservationOcclusion>();
+            Occlusion.Initialize(Session);
             Session.PendingChanged += CancelForStoneChange;
             Session.Restarted += ResetView;
             if(Session.Pending!=null) target=Session.Pending.transform.position;
@@ -163,12 +166,25 @@ namespace RockBalancing
             active = !blocked;
             selected = Session.Pending;
             rotating = false;
-            if (active && Physics.Raycast(ViewCamera.ScreenPointToRay(position), out var hit, 100))
+            if (active && ObservationHit(ViewCamera.ScreenPointToRay(position), out var hit))
             {
                 var stone = hit.collider.GetComponent<Stone>();
                 rotating = stone != null && stone == selected;
                 if (stone != null && stone != selected) blocked = true;
             }
+        }
+        bool ObservationHit(Ray ray, out RaycastHit nearest)
+        {
+            nearest = default;
+            float distance = float.PositiveInfinity;
+            foreach (var hit in Physics.RaycastAll(ray, ViewCamera.farClipPlane))
+            {
+                // Faded scenery must not steal rotation gestures from visible stones.
+                if (Occlusion != null && Occlusion.IsFaded(hit.collider)) continue;
+                if (hit.distance >= distance) continue;
+                nearest = hit; distance = hit.distance;
+            }
+            return distance < float.PositiveInfinity;
         }
         bool IsUI(Vector2 p)
         {
@@ -193,7 +209,7 @@ namespace RockBalancing
             else
             {
                 yaw = Mathf.Repeat(yaw + delta.x * OrbitSensitivity,360);
-                pitch = Mathf.Clamp(pitch - delta.y * OrbitSensitivity, Mathf.Clamp(MinimumPitch,0,89), Mathf.Clamp(MaximumPitch,Mathf.Clamp(MinimumPitch,0,89),89));
+                pitch = Mathf.Clamp(pitch - delta.y * OrbitSensitivity, Mathf.Clamp(MinimumPitch,-90,90), Mathf.Clamp(MaximumPitch,Mathf.Clamp(MinimumPitch,-90,90),90));
             }
         }
         void End(Vector2 p)
@@ -254,37 +270,41 @@ namespace RockBalancing
             float near=ViewCamera.nearClipPlane;
             float halfHeight=near*Mathf.Tan(ViewCamera.fieldOfView*Mathf.Deg2Rad*.5f);
             float clearance=Mathf.Max(CameraClearance, Mathf.Sqrt(near*near+halfHeight*halfHeight*(1+ViewCamera.aspect*ViewCamera.aspect)));
-            float low=Mathf.Clamp(MinimumPitch,0,89), high=Mathf.Clamp(MaximumPitch,low,89);
+            float low=Mathf.Clamp(MinimumPitch,-90,90), high=Mathf.Clamp(MaximumPitch,low,90);
             pitch=Mathf.Clamp(pitch,low,high);
             float safeDistance=Mathf.Max(.1f,distance);
-            var direction=Quaternion.Euler(pitch,yaw,0)*Vector3.back;
+            var rotation=Quaternion.Euler(pitch,yaw,0);
+            var direction=rotation*Vector3.back;
             // A radial exclusion envelope prevents the preview or a nearby tower stone
             // from enclosing the camera/near plane, including while zooming.
-            foreach(var stone in Session.Stones)
+            // Increasing the radius past one stone may enter an interval tested
+            // earlier. Repeat until stable so list order cannot leave the near plane
+            // inside another stone (especially when looking up through a tower).
+            for (int pass = 0; pass < Session.Stones.Count; pass++)
             {
-                if(stone==null || !stone.gameObject.activeInHierarchy) continue;
-                var bounds=stone.Shape.bounds;
-                float radius=bounds.extents.magnitude+clearance;
-                var offset=bounds.center-target;
-                float along=Vector3.Dot(offset,direction);
-                float perpendicularSquared=offset.sqrMagnitude-along*along;
-                if(perpendicularSquared>=radius*radius) continue;
-                float extent=Mathf.Sqrt(Mathf.Max(0,radius*radius-perpendicularSquared));
-                if(along-extent<safeDistance && along+extent>0)
-                    safeDistance=Mathf.Max(safeDistance,along+extent);
+                float before = safeDistance;
+                foreach(var stone in Session.Stones)
+                {
+                    if(stone==null || !stone.gameObject.activeInHierarchy) continue;
+                    var bounds=stone.Shape.bounds;
+                    float radius=bounds.extents.magnitude+clearance;
+                    var offset=bounds.center-target;
+                    float along=Vector3.Dot(offset,direction);
+                    float perpendicularSquared=offset.sqrMagnitude-along*along;
+                    if(perpendicularSquared>=radius*radius) continue;
+                    float extent=Mathf.Sqrt(Mathf.Max(0,radius*radius-perpendicularSquared));
+                    if(along-extent<safeDistance && along+extent>0)
+                        safeDistance=Mathf.Max(safeDistance,along+extent);
+                }
+                if (safeDistance == before) break;
             }
             var position=target+direction*safeDistance;
-            // Ground and base are horizontal solids in the playable scene. Keeping
-            // the near-plane sphere above their surfaces also protects low angles.
-            float floor=Session.Ground!=null?Session.Ground.bounds.max.y:float.NegativeInfinity;
-            if(Session.Base!=null)
-            {
-                var b=Session.Base.bounds; b.Expand(clearance*2);
-                if(position.x>=b.min.x && position.x<=b.max.x && position.z>=b.min.z && position.z<=b.max.z)
-                    floor=Mathf.Max(floor,Session.Base.bounds.max.y);
-            }
-            position.y=Mathf.Max(position.y,floor+clearance);
-            ViewCamera.transform.SetPositionAndRotation(position,Quaternion.LookRotation(target-position,Vector3.up));
+            // Preserve the yaw-defined right axis at both exact poles. LookRotation
+            // with world-up is singular here and can roll or flip unexpectedly.
+            // Scenery fades instead of lifting the camera out of negative pitch.
+            ViewCamera.transform.SetPositionAndRotation(position,rotation);
+            if (Occlusion != null) Occlusion.UpdateView(ViewCamera, clearance);
+
         }
         void OnApplicationFocus(bool focus) { if (!focus) CancelForFocusLoss(); }
         void OnApplicationPause(bool pause) { if (pause) CancelForFocusLoss(); }

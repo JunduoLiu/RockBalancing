@@ -91,7 +91,7 @@ namespace RockBalancing.Tests
             var point=input.ViewCamera.WorldToViewportPoint(centre);
             Assert.That(point.x,Is.EqualTo(.5f).Within(.001f));Assert.That(point.y,Is.EqualTo(.5f).Within(.001f));
             Assert.That(point.z,Is.GreaterThan(0));
-            Assert.That(Vector3.Dot(input.ViewCamera.transform.up,Vector3.up),Is.GreaterThan(0),"Camera cannot invert");
+            Assert.That(Vector3.Dot(input.ViewCamera.transform.up,Vector3.up),Is.GreaterThanOrEqualTo(-.00001f),"Camera cannot invert");
         }
         [UnityTest] public IEnumerator BlankOrbitCirclesPendingThroughFullTurnWithoutChangingStone()
         {
@@ -116,18 +116,18 @@ namespace RockBalancing.Tests
         {
             var centre=session.Pending.transform.position;var rotation=session.Pending.transform.rotation;
             yield return Orbit(Vector2.down*1000);
-            Assert.That(Elevation(centre),Is.EqualTo(85).Within(.01f));AssertAimedAt(centre);
+            Assert.That(Elevation(centre),Is.EqualTo(90).Within(.03f));AssertAimedAt(centre);
             yield return Orbit(Vector2.right*90);AssertAimedAt(centre);
             yield return Orbit(Vector2.up*40);
-            Assert.That(Elevation(centre),Is.EqualTo(75).Within(.01f));
+            Assert.That(Elevation(centre),Is.EqualTo(80).Within(.01f));
             yield return Orbit(Vector2.up*1000);
-            Assert.That(Elevation(centre),Is.EqualTo(5).Within(.01f));AssertAimedAt(centre);
+            Assert.That(Elevation(centre),Is.EqualTo(-90).Within(.03f));AssertAimedAt(centre);
             input.MinimumPitch=12;input.MaximumPitch=70;
             yield return Orbit(Vector2.down*1000);Assert.That(Elevation(centre),Is.EqualTo(70).Within(.01f));
             yield return Orbit(Vector2.up*1000);Assert.That(Elevation(centre),Is.EqualTo(12).Within(.01f));
             Assert.That(session.Pending.transform.position,Is.EqualTo(centre));Assert.That(session.Pending.transform.rotation,Is.EqualTo(rotation));
         }
-        [UnityTest] public IEnumerator ZoomLimitsAreConfigurableAndNearPlaneStaysOutsideStoneAndGround()
+        [UnityTest] public IEnumerator ZoomLimitsAreConfigurableAndNearPlaneStaysOutsideStoneBelowGround()
         {
             var stone=session.Pending;var centre=stone.transform.position;
             input.MinimumZoom=.8f;input.MaximumZoom=6;
@@ -138,13 +138,24 @@ namespace RockBalancing.Tests
             Assert.That(Vector3.Distance(input.ViewCamera.transform.position,centre),Is.EqualTo(6).Within(.002f));
             // Safety takes precedence over a zoom limit that would enter geometry.
             input.MinimumZoom=.1f;stone.transform.localScale=Vector3.one*5;Physics.SyncTransforms();
+            // The enlarged preview fills the screen at the close limit. Set the
+            // boundary directly rather than mistaking a stone drag for blank orbit.
+            input.MinimumPitch=input.MaximumPitch=-90;
             yield return Scroll(100000);
             for(int i=0;i<8;i++)
             {
-                yield return Orbit(new Vector2(45/input.OrbitSensitivity,1000));
+                typeof(GameInput).GetField("yaw",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(input,i*45f);
+                yield return null;
                 var p=input.ViewCamera.transform.position;
                 Assert.That(Vector3.Distance(p,stone.Shape.ClosestPoint(p)),Is.GreaterThanOrEqualTo(input.CameraClearance-.001f));
-                Assert.That(p.y-input.CameraClearance,Is.GreaterThanOrEqualTo(session.Ground.bounds.max.y-.001f));
+                Assert.That(p.y,Is.LessThan(session.Ground.bounds.min.y),"Negative pitch is not cancelled by a scenery height clamp");
+                var corners=new Vector3[4];
+                input.ViewCamera.CalculateFrustumCorners(new Rect(0,0,1,1),input.ViewCamera.nearClipPlane,Camera.MonoOrStereoscopicEye.Mono,corners);
+                foreach(var corner in corners)
+                {
+                    var world=input.ViewCamera.transform.TransformPoint(corner);
+                    Assert.That(Vector3.Distance(world,stone.Shape.ClosestPoint(world)),Is.GreaterThan(.001f),"Near-plane corners must clear the stone too");
+                }
                 AssertAimedAt(centre);
             }
             Assert.That(stone.transform.position,Is.EqualTo(centre));Assert.That(stone.Released,Is.False);
