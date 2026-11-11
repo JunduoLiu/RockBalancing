@@ -495,23 +495,24 @@ namespace RockBalancing.Tests
             pad.OnPointerDown(PadEvent(pad,Vector2.right));yield return new WaitForSeconds(.1f);pad.OnPointerUp(PadEvent(pad,Vector2.right));
             Assert.That(Vector3.Distance(before,stone.transform.position),Is.GreaterThan(.01f));
         }
-        [UnityTest] public IEnumerator OffscreenPendingAndCoveredLandingHaveNonBlockingDirectionCues()
+        [UnityTest] public IEnumerator OffscreenPendingRetainsNonBlockingCueWithoutLandingLabels()
         {
             var stone=session.Pending;var initial=input.ViewCamera.transform.position;
             input.Adjusting=true;
             Assert.That(session.Adjust(stone,stone.transform.position+input.ViewCamera.transform.right*3+Vector3.up,stone.transform.rotation),Is.True);
             yield return null;yield return null;
-            var pending=View.Root.Find("Pending direction");var landing=View.Root.Find("Landing direction");
-            Assert.That(pending.gameObject.activeSelf,Is.True);Assert.That(landing.gameObject.activeSelf,Is.True);
+            var pending=View.Root.Find("Pending direction");
+            Assert.That(View.Root.Find("Landing direction"),Is.Null);
+            Assert.That(pending.gameObject.activeSelf,Is.True);
             Assert.That(pending.GetComponentInChildren<Text>().text,Does.Contain("→"));
             Assert.That(input.ViewCamera.transform.position,Is.EqualTo(initial),"The cue must not move the locked camera");
-            foreach(var marker in new[]{pending,landing})
+            foreach(var marker in new[]{pending})
             {
                 var p=Centre(marker);var hits=new System.Collections.Generic.List<RaycastResult>();
                 EventSystem.current.RaycastAll(new PointerEventData(EventSystem.current){position=p},hits);
                 Assert.That(hits.Exists(h=>h.gameObject.transform.IsChildOf(marker)),Is.False,"Indicators must not steal scene touches");
                 var anchor=((RectTransform)marker).anchorMin;
-                Assert.That(anchor.x,Is.InRange(.12f,.88f));Assert.That(anchor.y,Is.InRange(.40f,.75f));
+                Assert.That(anchor.x,Is.InRange(.12f,.88f));Assert.That(anchor.y,Is.InRange(.38f,.83f));
                 var corners=new Vector3[4];((RectTransform)marker).GetWorldCorners(corners);
                 foreach(var corner in corners)Assert.That(RectTransformUtility.WorldToScreenPoint(null,corner).x,Is.InRange(0f,(float)Screen.width));
             }
@@ -519,7 +520,7 @@ namespace RockBalancing.Tests
             Assert.That(pending.gameObject.activeSelf,Is.False,"Recentered pending no longer needs a direction cue");
             AssertAimedAt(stone.transform.position);
             input.Modal=true;yield return null;yield return null;
-            Assert.That(landing.gameObject.activeSelf,Is.False);input.Modal=false;
+            Assert.That(pending.gameObject.activeSelf,Is.False);input.Modal=false;
             session.Restart();yield return null;yield return null;
             Assert.That(pending.gameObject.activeSelf,Is.False);
         }
@@ -596,7 +597,20 @@ namespace RockBalancing.Tests
         [UnityTest] public IEnumerator ShareRendersOnceAndRestartInvalidatesSnapshot()
         {
             var share=root.GetComponent<ShareController>();
+            // Full-scene sharing is independent from the removed gameplay panorama.
+            session.Pending.transform.position += Vector3.right * 3 + Vector3.up * 2;
+            Physics.SyncTransforms();
             share.Capture();
+            var camera=GameObject.Find("Share capture camera").GetComponent<Camera>();
+            var bounds=session.Base.bounds;
+            foreach(var stone in session.Stones)bounds.Encapsulate(stone.Surface.bounds);
+            for(int i=0;i<8;i++)
+            {
+                var corner=bounds.center+Vector3.Scale(bounds.extents,new Vector3((i&1)==0?-1:1,(i&2)==0?-1:1,(i&4)==0?-1:1));
+                var point=camera.WorldToViewportPoint(corner);
+                Assert.That(point.x,Is.InRange(.02f,.98f));Assert.That(point.y,Is.InRange(.02f,.98f));
+                Assert.That(point.z,Is.GreaterThan(camera.nearClipPlane));Assert.That(point.z,Is.LessThan(camera.farClipPlane));
+            }
             var captured=share.Snapshot;
             Assert.That(captured,Is.Not.Null);Assert.That(captured.HeightMm,Is.Zero);
             Assert.That(captured.Png.Length,Is.GreaterThan(1000));
@@ -612,24 +626,76 @@ namespace RockBalancing.Tests
             share.Cancel();Assert.That(session.CanShare,Is.True);
             yield return null;
         }
-        [UnityTest] public IEnumerator PanoramaFramesHighTowerAndAdjustmentLocksAutomaticFollow()
+        [UnityTest] public IEnumerator SimplifiedInterfaceHasNoRemovedControlsOrLandingDirections()
         {
+            foreach(var label in View.Root.GetComponentsInChildren<Text>(true))
+            {
+                Assert.That(label.text,Does.Not.Contain("查看全景"));
+                Assert.That(label.text,Does.Not.Contain("ROCK / BALANCE"));
+                Assert.That(label.text,Does.Not.Contain("一点耐心"));
+                Assert.That(label.text,Does.Not.Contain("摇杆移动"));
+                Assert.That(label.text,Does.Not.Contain("落点"));
+            }
+            Canvas.ForceUpdateCanvases();
+            foreach(var label in View.Root.GetComponentsInChildren<Text>())
+                if(label.text.Length>0)Assert.That(label.cachedTextGenerator.characterCountVisible,Is.GreaterThanOrEqualTo(label.text.Length),label.text+" must fit without clipping");
+            Assert.That(View.Root.Find("Instructions"),Is.Null);
+            Assert.That(View.Root.Find("Actions").childCount,Is.EqualTo(2));
+            var feedback=View.Root.Find("Temporary feedback");
+            Assert.That(feedback.gameObject.activeSelf,Is.False);
+            var stone=session.Pending;var start=stone.transform.position;
+            input.Adjusting=true;
+            foreach(var offset in new[]{Vector3.right*10,Vector3.left*10,Vector3.up*10,Vector3.down*10,Vector3.forward*20})
+            {
+                stone.transform.position=start+offset;yield return null;
+                Assert.That(View.Root.Find("Landing direction"),Is.Null);
+                foreach(var label in View.Root.GetComponentsInChildren<Text>(true))
+                    Assert.That(label.text,Does.Not.Contain("落点"));
+            }
+            stone.transform.position=start;input.Adjusting=false;
+        }
+        [UnityTest] public IEnumerator InvalidReleaseShowsTemporaryNonBlockingFeedbackAndKeepsStone()
+        {
+            double now=10;session.Clock=()=>now;
+            var stone=session.Pending;var valid=stone.transform.position;
+            stone.transform.position=session.Base.bounds.center;Physics.SyncTransforms();
+            Assert.That(session.Release(stone),Is.False);yield return null;
+            var feedback=View.Root.Find("Temporary feedback");
+            Assert.That(feedback.gameObject.activeSelf,Is.True);
+            Assert.That(feedback.GetComponentInChildren<Text>().text,Does.Contain("移开或抬高"));
+            Assert.That(session.Pending,Is.SameAs(stone));Assert.That(stone.Released,Is.False);
+            foreach(var graphic in feedback.GetComponentsInChildren<Graphic>())Assert.That(graphic.raycastTarget,Is.False);
+            now+=2.1;yield return null;
+            Assert.That(feedback.gameObject.activeSelf,Is.False,"Expired feedback leaves no permanent instruction bar");
+            stone.transform.position=valid;Physics.SyncTransforms();
+            yield return Tap(Centre(View.ReleaseButton));Assert.That(stone.Released,Is.True);
+        }
+        [UnityTest] public IEnumerator HeaderRestartCanCancelAndConfirmWhileShareStillFramesCompleteScene()
+        {
+            var initial=input.ViewCamera.transform.position;var initialRotation=input.ViewCamera.transform.rotation;
             var stone=session.Pending;
-            stone.transform.localScale=new Vector3(1,20,1);Physics.SyncTransforms();
-            stone.transform.position+=Vector3.up*(session.BaseTop-stone.Shape.bounds.min.y+.001f);Physics.SyncTransforms();
-            Assert.That(session.Release(stone),Is.True);stone.Body.constraints=RigidbodyConstraints.FreezeAll;
-            yield return new WaitForFixedUpdate();yield return new WaitForFixedUpdate();session.RefreshState();
-            session.Pending.transform.position=new Vector3(0,stone.HighestPoint()+.25f,0);Physics.SyncTransforms();
-            input.ViewCamera.aspect=430f/900f;input.Panorama();yield return null;
-            var bottom=input.ViewCamera.WorldToViewportPoint(new Vector3(0,session.BaseTop,0));
-            var top=input.ViewCamera.WorldToViewportPoint(session.Pending.transform.position);
-            Assert.That(bottom.y,Is.GreaterThan(.25f));Assert.That(top.y,Is.LessThan(.79f));
-            Assert.That(top.z,Is.GreaterThan(0));
-            input.Adjusting=true;var position=input.ViewCamera.transform.position;
-            session.Pending.transform.position+=Vector3.up*2;yield return null;yield return null;
-            Assert.That(input.ViewCamera.transform.position,Is.EqualTo(position));
-            input.Adjusting=false;session.Restart();yield return null;
-            Assert.That(input.ViewCamera.transform.position.y,Is.LessThan(position.y));
+            Assert.That(session.Adjust(stone,stone.transform.position+Vector3.right*3+Vector3.up*2,stone.transform.rotation),Is.True);
+            yield return Orbit(new Vector2(160,-100));yield return Scroll(400);
+            var rotation=input.ViewCamera.transform.rotation;
+            var share=root.GetComponent<ShareController>();
+            yield return Tap(Centre(View.ShareButton));
+            Assert.That(share.Snapshot,Is.Not.Null);
+            // Capture is synchronous and its temporary camera is destroyed at frame end.
+            Assert.That(share.Snapshot.Png.Length,Is.GreaterThan(1000));
+            Assert.That(Quaternion.Angle(input.ViewCamera.transform.rotation,rotation),Is.LessThan(.01f));
+            var back=View.Root.Find("Share preview").GetComponentInChildren<Button>();
+            yield return Tap(Centre(back));Assert.That(share.Snapshot,Is.Null);Assert.That(input.Modal,Is.False);
+            var restart=View.Root.Find("Actions").GetComponentInChildren<Button>();
+            yield return Tap(Centre(restart));Assert.That(input.Modal,Is.True);
+            var dialog=View.Root.Find("Restart confirmation/Dialog");
+            var buttons=dialog.GetComponentsInChildren<Button>();
+            yield return Tap(Centre(buttons[0]));Assert.That(session.Pending,Is.SameAs(stone));Assert.That(input.Modal,Is.False);
+            yield return Tap(Centre(restart));yield return Tap(Centre(buttons[1]));
+            Assert.That(session.Pending,Is.Not.SameAs(stone));Assert.That(session.Stones.Count,Is.EqualTo(1));
+            Assert.That(input.Modal,Is.False);
+            yield return null;
+            Assert.That(Vector3.Distance(input.ViewCamera.transform.position,initial),Is.LessThan(.001f));
+            Assert.That(Quaternion.Angle(input.ViewCamera.transform.rotation,initialRotation),Is.LessThan(.001f));
         }
     }
 }

@@ -17,8 +17,8 @@ namespace RockBalancing
         public Button DiscardButton { get; private set; }
         public Button ReleaseButton { get; private set; }
         Text message;
-        Text pendingEdge, dropEdge;
-        PlacementGuide guide;
+        Text pendingEdge;
+        GameObject feedbackPanel;
         GameObject controls, confirmation;
         readonly Color ink = new Color(.16f, .22f, .23f);
         readonly Color paper = new Color(.96f, .95f, .91f, .96f);
@@ -37,17 +37,16 @@ namespace RockBalancing
             Root = canvasObject.GetComponent<RectTransform>();
             if (FindFirstObjectByType<EventSystem>() == null)
                 new GameObject("Event System", typeof(EventSystem), typeof(InputSystemUIInputModule)).transform.SetParent(transform);
-            Label(Root, "ROCK / BALANCE", new Vector2(.06f,.925f), new Vector2(.8f,.98f), 22, TextAnchor.MiddleLeft);
-            Label(Root, "一点耐心，一点重力。", new Vector2(.06f,.89f), new Vector2(.96f,.93f), 12, TextAnchor.MiddleLeft);
-            HeightLabel = Label(Root, "", new Vector2(.06f,.79f), new Vector2(.9f,.89f), 44, TextAnchor.MiddleLeft);
-            var hints=Panel(Root,"Instructions",new Vector2(.06f,.24f),new Vector2(.94f,.295f),new Color(.96f,.95f,.91f,.9f),false);
-            message = Label(hints, "", Vector2.zero, Vector2.one, 13, TextAnchor.MiddleCenter);
-            var bar = Panel(Root, "Actions", new Vector2(.06f,.16f), new Vector2(.94f,.225f), Color.clear, false);
-            ButtonAt(bar, "查看全景", new Vector2(0,0), new Vector2(.31f,1), Input.Panorama);
-            ButtonAt(bar, "重新开始", new Vector2(.345f,0), new Vector2(.655f,1), () => ShowRestart(true));
-            ShareButton = ButtonAt(bar, "分享", new Vector2(.69f,0), new Vector2(1,1), () => {});
+            HeightLabel = Label(Root, "", new Vector2(.06f,.87f), new Vector2(.63f,.98f), 44, TextAnchor.MiddleLeft);
+            var feedback = Panel(Root,"Temporary feedback",new Vector2(.06f,.27f),new Vector2(.94f,.34f),paper,false);
+            feedbackPanel = feedback.gameObject;
+            message = Label(feedback, "", Vector2.zero, Vector2.one, 13, TextAnchor.MiddleCenter);
+            feedbackPanel.SetActive(false);
+            var bar = Panel(Root, "Actions", new Vector2(.67f,.90f), new Vector2(.94f,.965f), Color.clear, false);
+            ButtonAt(bar, "重新开始", Vector2.zero, new Vector2(.57f,1), () => ShowRestart(true));
+            ShareButton = ButtonAt(bar, "分享", new Vector2(.64f,0), Vector2.one, () => {});
             ShareButton.gameObject.SetActive(false);
-            controls = Panel(Root, "Adjustments", new Vector2(.06f,.02f), new Vector2(.94f,.15f), Color.clear, false).gameObject;
+            controls = Panel(Root, "Adjustments", new Vector2(.06f,.02f), new Vector2(.94f,.16f), Color.clear, false).gameObject;
             var move = Panel(controls.transform, "Move", Vector2.zero, new Vector2(.56f,1), paper, true);
             Label(move, "前", new Vector2(.4f,.77f), new Vector2(.6f,1), 13);
             Label(move, "后", new Vector2(.4f,0), new Vector2(.6f,.23f), 13);
@@ -68,8 +67,8 @@ namespace RockBalancing
             vertical.Held = Input.HoldHeight;
             vertical.CanBegin = () => Input.CanAdjust;
             vertical.Handle = Handle(lift, "升降");
-            ReleaseButton = StoneButton("释放", new Vector2(.06f,.30f), new Vector2(.59f,.355f), false);
-            DiscardButton = StoneButton("弃置这颗", new Vector2(.67f,.30f), new Vector2(.94f,.355f), true);
+            ReleaseButton = StoneButton("释放", new Vector2(.06f,.18f), new Vector2(.59f,.245f), false);
+            DiscardButton = StoneButton("弃置这颗", new Vector2(.67f,.18f), new Vector2(.94f,.245f), true);
             var retry = ButtonAt(Root, "等待下一颗 · 点击重试", new Vector2(.22f,.07f), new Vector2(.78f,.13f), () => { _ = Session.RequestNextAsync(); });
             retry.gameObject.name = "Retry";
             retryButton = retry;
@@ -81,7 +80,6 @@ namespace RockBalancing
             ButtonAt(dialog, "重新开始", new Vector2(.52f,.1f), new Vector2(.95f,.35f), () => { Session.Restart(); ShowRestart(false); });
             confirmation.SetActive(false);
             pendingEdge=EdgeLabel("Pending direction");
-            dropEdge=EdgeLabel("Landing direction");
         }
         Text EdgeLabel(string name)
         {
@@ -95,14 +93,14 @@ namespace RockBalancing
         {
             var p=Input.ViewCamera.WorldToViewportPoint(point);
             if(p.z<0){p.x=1-p.x;p.y=1-p.y;}
-            bool outside=p.z<=0 || p.x<.12f || p.x>.88f || p.y<.40f || p.y>.75f;
+            bool outside=p.z<=0 || p.x<.12f || p.x>.88f || p.y<.38f || p.y>.83f;
             var rect=(RectTransform)label.transform.parent;
             rect.gameObject.SetActive(outside && !Input.Modal);
             if(!outside)return;
-            string direction=p.x<.12f?"←":p.x>.88f?"→":p.y<.40f?"↓":"↑";
+            string direction=p.x<.12f?"←":p.x>.88f?"→":p.y<.38f?"↓":"↑";
             label.text=title+" "+direction;
             float margin=Mathf.Max(.12f,rect.sizeDelta.x/(2*Root.rect.width)+.02f);
-            rect.anchorMin=rect.anchorMax=new Vector2(Mathf.Clamp(p.x,margin,1-margin),Mathf.Clamp(p.y,.40f,.75f));
+            rect.anchorMin=rect.anchorMax=new Vector2(Mathf.Clamp(p.x,margin,1-margin),Mathf.Clamp(p.y,.38f,.83f));
             rect.anchoredPosition=Vector2.zero;
         }
         Button retryButton;
@@ -129,24 +127,14 @@ namespace RockBalancing
             retryButton.gameObject.SetActive(Session.Waiting);
             DiscardButton.interactable = ReleaseButton.interactable = Input.CanAct;
             HeightLabel.text = Session.Stabilizing ? "stablizing" : Session.CurrentHeightMm + " mm";
-            HeightLabel.fontSize = Session.Stabilizing ? 28 : 44;
+            HeightLabel.fontSize = HeightLabel.resizeTextMaxSize = Session.Stabilizing ? 28 : 44;
             ShareButton.interactable = Session.CanShare;
-            message.text = Session.Feedback.Length > 0 ? Session.Feedback : "摇杆移动 · 升降调高 · 点击释放\n拖石头旋转 · 拖空白观察 · 双指缩放";
-            if(guide==null)guide=GetComponent<PlacementGuide>();
+            message.text = Session.Feedback;
+            feedbackPanel.SetActive(message.text.Length > 0 && !Session.Waiting && !Input.Modal);
             if(Session.Pending!=null)
-            {
                 UpdateEdge(pendingEdge,Session.Pending.transform.position,"待摆石头");
-                if(guide!=null)UpdateEdge(dropEdge,guide.DropPosition,"落点");
-                var a=(RectTransform)pendingEdge.transform.parent;
-                var b=(RectTransform)dropEdge.transform.parent;
-                if(a.gameObject.activeSelf && b.gameObject.activeSelf && Vector2.Distance(a.anchorMin,b.anchorMin)<.08f)
-                    b.anchoredPosition=Vector2.down*30;
-            }
             else
-            {
                 pendingEdge.transform.parent.gameObject.SetActive(false);
-                dropEdge.transform.parent.gameObject.SetActive(false);
-            }
         }
         public Text Label(Transform parent, string text, Vector2 min, Vector2 max, int size, TextAnchor align = TextAnchor.MiddleCenter)
         {
@@ -155,6 +143,11 @@ namespace RockBalancing
             label.font = Typeface;
             label.text = text;
             label.fontSize = size;
+            // Wide, short windows have less vertical space after canvas scaling.
+            // Shrink captions within their cells instead of silently clipping them.
+            label.resizeTextForBestFit = true;
+            label.resizeTextMinSize = Mathf.Max(9, size / 2);
+            label.resizeTextMaxSize = size;
             label.alignment = align;
             label.color = ink;
             label.raycastTarget = false;

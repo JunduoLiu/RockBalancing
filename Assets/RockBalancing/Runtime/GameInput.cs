@@ -31,7 +31,6 @@ namespace RockBalancing
         [Min(.01f)] public float CameraClearance=.08f;
         float yaw = 25, pitch = 16, distance = 3.8f;
         Vector3 target = new Vector3(0, .3f, 0);
-        bool panorama;
         Vector2 start, previous;
         bool active, dragged, blocked, rotating;
         bool requireNeutral;
@@ -61,24 +60,9 @@ namespace RockBalancing
         }
         public void ResetView()
         {
-            yaw = 25; pitch = 16; distance = 3.8f; panorama = false;
+            yaw = 25; pitch = 16; distance = 3.8f;
             target = Session.Pending != null ? Session.Pending.transform.position : new Vector3(0, Session.BaseTop + .28f, 0);
             CancelForFocusLoss();
-        }
-        public void Panorama()
-        {
-            float height=ObservationHeight();
-            panorama=true; pitch=16;
-            target=new Vector3(0,Session.BaseTop+height*.5f,0);
-            distance=FramingDistance(height);
-        }
-        float ObservationHeight()=>Mathf.Max(.6f,Mathf.Max(Session.TowerTop(),
-            Session.Pending!=null?Session.Pending.HighestPoint():Session.BaseTop)-Session.BaseTop);
-        float FramingDistance(float height)
-        {
-            float tangent=Mathf.Tan(ViewCamera.fieldOfView*Mathf.Deg2Rad*.5f);
-            // Leave the upper score and lower controls clear in the portrait view.
-            return Mathf.Max(height/(2*tangent*.44f)*1.1f,.6f/Mathf.Max(.1f,ViewCamera.aspect)/tangent*1.15f);
         }
         public void CancelGesture() { active = false; selected = null; touchId = -1; pinch = 0; }
         public void CancelForFocusLoss(string unused="")
@@ -168,7 +152,6 @@ namespace RockBalancing
 
         void Zoom(float value)
         {
-            panorama=false;
             distance=Mathf.Clamp(value, Mathf.Max(.1f,MinimumZoom), Mathf.Max(MinimumZoom,MaximumZoom));
         }
 
@@ -209,7 +192,6 @@ namespace RockBalancing
             }
             else
             {
-                panorama=false;
                 yaw = Mathf.Repeat(yaw + delta.x * OrbitSensitivity,360);
                 pitch = Mathf.Clamp(pitch - delta.y * OrbitSensitivity, Mathf.Clamp(MinimumPitch,0,89), Mathf.Clamp(MaximumPitch,Mathf.Clamp(MinimumPitch,0,89),89));
             }
@@ -260,13 +242,7 @@ namespace RockBalancing
             if (!Adjusting && !active && pinch <= 0)
             {
                 float follow = 1 - Mathf.Exp(-FollowSpeed * Time.deltaTime);
-                if(panorama)
-                {
-                    float height=ObservationHeight();
-                    target=Vector3.Lerp(target,new Vector3(0,Session.BaseTop+height*.5f,0),follow);
-                    distance=Mathf.Max(distance,FramingDistance(height));
-                }
-                else if(Session.Pending!=null && !Session.Pending.Released)
+                if(Session.Pending!=null && !Session.Pending.Released)
                     target=Vector3.Lerp(target,Session.Pending.transform.position,follow);
             }
             PlaceCamera();
