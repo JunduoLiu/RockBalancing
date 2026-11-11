@@ -26,7 +26,12 @@ namespace RockBalancing
         [Min(.01f)] public float FollowSpeed=2;
         [Min(.1f)] public float MinimumZoom=.7f;
         [Min(1)] public float MaximumZoom=40;
-        float yaw = 25, distance = 3.8f, targetY = .3f;
+        [Range(0, 89)] public float MinimumPitch=5;
+        [Range(0, 89)] public float MaximumPitch=85;
+        [Min(.01f)] public float CameraClearance=.08f;
+        float yaw = 25, pitch = 16, distance = 3.8f;
+        Vector3 target = new Vector3(0, .3f, 0);
+        bool panorama;
         Vector2 start, previous;
         bool active, dragged, blocked, rotating;
         bool requireNeutral;
@@ -46,6 +51,7 @@ namespace RockBalancing
         {
             Session.PendingChanged += CancelForStoneChange;
             Session.Restarted += ResetView;
+            if(Session.Pending!=null) target=Session.Pending.transform.position;
         }
         void OnDestroy()
         {
@@ -53,11 +59,17 @@ namespace RockBalancing
             Session.PendingChanged -= CancelForStoneChange;
             Session.Restarted -= ResetView;
         }
-        public void ResetView() { yaw = 25; distance = 3.8f; targetY = .3f; CancelForFocusLoss(); }
+        public void ResetView()
+        {
+            yaw = 25; pitch = 16; distance = 3.8f; panorama = false;
+            target = Session.Pending != null ? Session.Pending.transform.position : new Vector3(0, Session.BaseTop + .28f, 0);
+            CancelForFocusLoss();
+        }
         public void Panorama()
         {
             float height=ObservationHeight();
-            targetY=Session.BaseTop+height*.5f;
+            panorama=true; pitch=16;
+            target=new Vector3(0,Session.BaseTop+height*.5f,0);
             distance=FramingDistance(height);
         }
         float ObservationHeight()=>Mathf.Max(.6f,Mathf.Max(Session.TowerTop(),
@@ -122,7 +134,7 @@ namespace RockBalancing
                 active = false;
                 blocked = true;
                 float current = Vector2.Distance(first.position.ReadValue(), second.position.ReadValue());
-                if (pinch > 0) distance = Mathf.Clamp(distance * pinch / Mathf.Max(1, current), MinimumZoom, MaximumZoom);
+                if (pinch > 0) Zoom(distance * pinch / Mathf.Max(1, current));
                 pinch = current;
                 return;
             }
@@ -150,7 +162,14 @@ namespace RockBalancing
             if (mouse.leftButton.wasPressedThisFrame) Begin(p);
             if (mouse.leftButton.isPressed) Move(p);
             if (mouse.leftButton.wasReleasedThisFrame) End(p);
-            distance = Mathf.Clamp(distance - mouse.scroll.ReadValue().y * .0015f, MinimumZoom, MaximumZoom);
+            float scroll=mouse.scroll.ReadValue().y;
+            if(scroll!=0) Zoom(distance - scroll * .0015f);
+        }
+
+        void Zoom(float value)
+        {
+            panorama=false;
+            distance=Mathf.Clamp(value, Mathf.Max(.1f,MinimumZoom), Mathf.Max(MinimumZoom,MaximumZoom));
         }
 
         void Begin(Vector2 position)
@@ -188,7 +207,12 @@ namespace RockBalancing
                                Quaternion.AngleAxis(delta.y * RotationSensitivity, ViewCamera.transform.right) * selected.transform.rotation;
                 Session.Adjust(selected, selected.transform.position, rotation);
             }
-            else yaw += delta.x * OrbitSensitivity;
+            else
+            {
+                panorama=false;
+                yaw = Mathf.Repeat(yaw + delta.x * OrbitSensitivity,360);
+                pitch = Mathf.Clamp(pitch - delta.y * OrbitSensitivity, Mathf.Clamp(MinimumPitch,0,89), Mathf.Clamp(MaximumPitch,Mathf.Clamp(MinimumPitch,0,89),89));
+            }
         }
         void End(Vector2 p)
         {
@@ -229,13 +253,55 @@ namespace RockBalancing
             MoveHeldStone();
             if (!Adjusting && !(active && rotating))
             {
-                float height=ObservationHeight();
-                targetY=Mathf.Lerp(targetY,Session.BaseTop+height*.5f,Time.deltaTime*FollowSpeed);
-                distance=Mathf.Max(distance,FramingDistance(height));
+                if(panorama)
+                {
+                    float height=ObservationHeight();
+                    target=Vector3.Lerp(target,new Vector3(0,Session.BaseTop+height*.5f,0),Time.deltaTime*FollowSpeed);
+                    distance=Mathf.Max(distance,FramingDistance(height));
+                }
+                else if(Session.Pending!=null && !Session.Pending.Released)
+                    target=Vector3.Lerp(target,Session.Pending.transform.position,Time.deltaTime*FollowSpeed);
             }
-            var target = new Vector3(0, targetY, 0);
-            ViewCamera.transform.position = target + Quaternion.Euler(16, yaw, 0) * new Vector3(0, 0, -distance);
-            ViewCamera.transform.LookAt(target);
+            PlaceCamera();
+        }
+
+        void PlaceCamera()
+        {
+            // Cover the near-plane corners as well as the camera point.
+            float near=ViewCamera.nearClipPlane;
+            float halfHeight=near*Mathf.Tan(ViewCamera.fieldOfView*Mathf.Deg2Rad*.5f);
+            float clearance=Mathf.Max(CameraClearance, Mathf.Sqrt(near*near+halfHeight*halfHeight*(1+ViewCamera.aspect*ViewCamera.aspect)));
+            float low=Mathf.Clamp(MinimumPitch,0,89), high=Mathf.Clamp(MaximumPitch,low,89);
+            pitch=Mathf.Clamp(pitch,low,high);
+            float safeDistance=Mathf.Max(.1f,distance);
+            var direction=Quaternion.Euler(pitch,yaw,0)*Vector3.back;
+            // A radial exclusion envelope prevents the preview or a nearby tower stone
+            // from enclosing the camera/near plane, including while zooming.
+            foreach(var stone in Session.Stones)
+            {
+                if(stone==null || !stone.gameObject.activeInHierarchy) continue;
+                var bounds=stone.Shape.bounds;
+                float radius=bounds.extents.magnitude+clearance;
+                var offset=bounds.center-target;
+                float along=Vector3.Dot(offset,direction);
+                float perpendicularSquared=offset.sqrMagnitude-along*along;
+                if(perpendicularSquared>=radius*radius) continue;
+                float extent=Mathf.Sqrt(Mathf.Max(0,radius*radius-perpendicularSquared));
+                if(along-extent<safeDistance && along+extent>0)
+                    safeDistance=Mathf.Max(safeDistance,along+extent);
+            }
+            var position=target+direction*safeDistance;
+            // Ground and base are horizontal solids in the playable scene. Keeping
+            // the near-plane sphere above their surfaces also protects low angles.
+            float floor=Session.Ground!=null?Session.Ground.bounds.max.y:float.NegativeInfinity;
+            if(Session.Base!=null)
+            {
+                var b=Session.Base.bounds; b.Expand(clearance*2);
+                if(position.x>=b.min.x && position.x<=b.max.x && position.z>=b.min.z && position.z<=b.max.z)
+                    floor=Mathf.Max(floor,Session.Base.bounds.max.y);
+            }
+            position.y=Mathf.Max(position.y,floor+clearance);
+            ViewCamera.transform.SetPositionAndRotation(position,Quaternion.LookRotation(target-position,Vector3.up));
         }
         void OnApplicationFocus(bool focus) { if (!focus) CancelForFocusLoss(); }
         void OnApplicationPause(bool pause) { if (pause) CancelForFocusLoss(); }

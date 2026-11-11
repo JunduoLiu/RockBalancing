@@ -66,9 +66,125 @@ namespace RockBalancing.Tests
             yield return Tap(point);Assert.That(session.Pending,Is.SameAs(pending));
             var rotation=pending.transform.rotation;
             var position=pending.transform.position;
+            var cameraPosition=input.ViewCamera.transform.position;
+            var cameraRotation=input.ViewCamera.transform.rotation;
             Pointer(point,true);yield return null;Pointer(point+Vector2.right*45,true);yield return null;Pointer(point+Vector2.right*45,false);yield return null;
             Assert.That(session.Pending,Is.SameAs(pending));Assert.That(Quaternion.Angle(rotation,pending.transform.rotation),Is.GreaterThan(1));
             Assert.That(pending.transform.position,Is.EqualTo(position));
+            Assert.That(Vector3.Distance(cameraPosition,input.ViewCamera.transform.position),Is.LessThan(.0001f));
+            Assert.That(Quaternion.Angle(cameraRotation,input.ViewCamera.transform.rotation),Is.LessThan(.001f));
+        }
+        IEnumerator Orbit(Vector2 delta)
+        {
+            Pointer(Blank,true);yield return null;
+            Pointer(Blank+delta,true);yield return null;
+            Pointer(Blank+delta,false);yield return null;
+        }
+        IEnumerator Scroll(float amount)
+        {
+            InputSystem.QueueStateEvent(mouse,new MouseState{position=Blank,scroll=new Vector2(0,amount)});
+            yield return null;yield return null;
+        }
+        float Elevation(Vector3 centre) => Mathf.Asin((input.ViewCamera.transform.position-centre).normalized.y)*Mathf.Rad2Deg;
+        void AssertAimedAt(Vector3 centre)
+        {
+            var point=input.ViewCamera.WorldToViewportPoint(centre);
+            Assert.That(point.x,Is.EqualTo(.5f).Within(.001f));Assert.That(point.y,Is.EqualTo(.5f).Within(.001f));
+            Assert.That(point.z,Is.GreaterThan(0));
+            Assert.That(Vector3.Dot(input.ViewCamera.transform.up,Vector3.up),Is.GreaterThan(0),"Camera cannot invert");
+        }
+        [UnityTest] public IEnumerator BlankOrbitCirclesPendingThroughFullTurnWithoutChangingStone()
+        {
+            var stone=session.Pending;var rotation=stone.transform.rotation;
+            // Exercise a centre away from the base axis through the public adjustment boundary.
+            Assert.That(session.Adjust(stone,new Vector3(.32f,.65f,-.18f),rotation),Is.True);
+            input.FollowSpeed=1000;yield return null;
+            var centre=stone.transform.position;var initial=input.ViewCamera.transform.position;
+            float radius=Vector3.Distance(initial,centre);
+            for(int i=0;i<8;i++)
+            {
+                yield return Orbit(Vector2.right*(45/input.OrbitSensitivity));
+                AssertAimedAt(centre);
+                Assert.That(Vector3.Distance(input.ViewCamera.transform.position,centre),Is.EqualTo(radius).Within(.002f));
+                Assert.That(stone.transform.position,Is.EqualTo(centre));Assert.That(stone.transform.rotation,Is.EqualTo(rotation));
+                if(i==3)Assert.That(Vector3.Distance(initial,input.ViewCamera.transform.position),Is.GreaterThan(radius*1.8f));
+            }
+            Assert.That(Vector3.Distance(initial,input.ViewCamera.transform.position),Is.LessThan(.002f));
+            yield return Tap(Blank);Assert.That(stone.Released,Is.False);
+        }
+        [UnityTest] public IEnumerator PitchLimitsAllowTopViewRemainUprightAndRespondImmediatelyAwayFromBoundary()
+        {
+            var centre=session.Pending.transform.position;var rotation=session.Pending.transform.rotation;
+            yield return Orbit(Vector2.down*1000);
+            Assert.That(Elevation(centre),Is.EqualTo(85).Within(.01f));AssertAimedAt(centre);
+            yield return Orbit(Vector2.right*90);AssertAimedAt(centre);
+            yield return Orbit(Vector2.up*40);
+            Assert.That(Elevation(centre),Is.EqualTo(75).Within(.01f));
+            yield return Orbit(Vector2.up*1000);
+            Assert.That(Elevation(centre),Is.EqualTo(5).Within(.01f));AssertAimedAt(centre);
+            input.MinimumPitch=12;input.MaximumPitch=70;
+            yield return Orbit(Vector2.down*1000);Assert.That(Elevation(centre),Is.EqualTo(70).Within(.01f));
+            yield return Orbit(Vector2.up*1000);Assert.That(Elevation(centre),Is.EqualTo(12).Within(.01f));
+            Assert.That(session.Pending.transform.position,Is.EqualTo(centre));Assert.That(session.Pending.transform.rotation,Is.EqualTo(rotation));
+        }
+        [UnityTest] public IEnumerator ZoomLimitsAreConfigurableAndNearPlaneStaysOutsideStoneAndGround()
+        {
+            var stone=session.Pending;var centre=stone.transform.position;
+            input.MinimumZoom=.8f;input.MaximumZoom=6;
+            yield return Scroll(100000);
+            Assert.That(Vector3.Distance(input.ViewCamera.transform.position,centre),Is.EqualTo(.8f).Within(.002f));
+            yield return Orbit(Vector2.down*1000);AssertAimedAt(centre);
+            yield return Scroll(-100000);
+            Assert.That(Vector3.Distance(input.ViewCamera.transform.position,centre),Is.EqualTo(6).Within(.002f));
+            // Safety takes precedence over a zoom limit that would enter geometry.
+            input.MinimumZoom=.1f;stone.transform.localScale=Vector3.one*5;Physics.SyncTransforms();
+            yield return Scroll(100000);
+            for(int i=0;i<8;i++)
+            {
+                yield return Orbit(new Vector2(45/input.OrbitSensitivity,1000));
+                var p=input.ViewCamera.transform.position;
+                Assert.That(Vector3.Distance(p,stone.Shape.ClosestPoint(p)),Is.GreaterThanOrEqualTo(input.CameraClearance-.001f));
+                Assert.That(p.y-input.CameraClearance,Is.GreaterThanOrEqualTo(session.Ground.bounds.max.y-.001f));
+                AssertAimedAt(centre);
+            }
+            Assert.That(stone.transform.position,Is.EqualTo(centre));Assert.That(stone.Released,Is.False);
+        }
+        [UnityTest] public IEnumerator TwoSceneTouchesOnlyZoomAndRemainingFingerCannotOrbitOrRotate()
+        {
+            touchscreen=InputSystem.AddDevice<Touchscreen>();touchscreen.MakeCurrent();
+            var stone=session.Pending;var centre=stone.transform.position;var rotation=stone.transform.rotation;
+            var cameraRotation=input.ViewCamera.transform.rotation;float before=Vector3.Distance(input.ViewCamera.transform.position,centre);
+            Vector2 a=input.ViewCamera.WorldToScreenPoint(centre), b=a+Vector2.right*(Screen.width*.25f);
+            Touch(1,UnityEngine.InputSystem.TouchPhase.Began,a);yield return null;
+            Touch(2,UnityEngine.InputSystem.TouchPhase.Began,b);yield return null;
+            var moved=b+(b-a)*.5f;
+            Touch(2,UnityEngine.InputSystem.TouchPhase.Moved,moved);yield return null;yield return null;
+            Assert.That(Vector3.Distance(input.ViewCamera.transform.position,centre),Is.EqualTo(before/1.5f).Within(.01f),
+                $"Scene touches: {touchscreen.touches[0].position.ReadValue()} / {touchscreen.touches[1].position.ReadValue()}, screen {Screen.width}x{Screen.height}");
+            Assert.That(Quaternion.Angle(cameraRotation,input.ViewCamera.transform.rotation),Is.LessThan(.001f));
+            Touch(2,UnityEngine.InputSystem.TouchPhase.Ended,moved);yield return null;
+            var cameraPosition=input.ViewCamera.transform.position;
+            Touch(1,UnityEngine.InputSystem.TouchPhase.Moved,a+new Vector2(70,70));yield return null;
+            Touch(1,UnityEngine.InputSystem.TouchPhase.Ended,a+new Vector2(70,70));yield return null;
+            Assert.That(input.ViewCamera.transform.position,Is.EqualTo(cameraPosition));
+            Assert.That(stone.transform.position,Is.EqualTo(centre));Assert.That(stone.transform.rotation,Is.EqualTo(rotation));
+            Assert.That(stone.Released,Is.False);
+        }
+        [UnityTest] public IEnumerator MissingOrRemovedPendingKeepsUsableViewAndRestartRestoresInitialPose()
+        {
+            var initial=input.ViewCamera.transform.position;var initialRotation=input.ViewCamera.transform.rotation;
+            yield return Orbit(new Vector2(160,-160));yield return Scroll(800);
+            Object.Destroy(session.Pending.gameObject);yield return null;
+            var held=input.ViewCamera.transform.position;var heldRotation=input.ViewCamera.transform.rotation;
+            yield return null;yield return null;
+            Assert.That(input.ViewCamera.transform.position,Is.EqualTo(held));
+            Assert.That(input.ViewCamera.transform.rotation,Is.EqualTo(heldRotation));
+            yield return Orbit(Vector2.right*80);
+            Assert.That(Vector3.Distance(input.ViewCamera.transform.position,held),Is.GreaterThan(.1f));
+            session.Restart();yield return null;yield return null;
+            Assert.That(Vector3.Distance(input.ViewCamera.transform.position,initial),Is.LessThan(.001f));
+            Assert.That(Quaternion.Angle(input.ViewCamera.transform.rotation,initialRotation),Is.LessThan(.001f));
+            Assert.That(session.Pending,Is.Not.Null);
         }
         [UnityTest] public IEnumerator BackgroundingDuringTouchCannotReleaseOnReturn()
         {
@@ -230,6 +346,29 @@ namespace RockBalancing.Tests
         {
             public readonly System.Threading.Tasks.TaskCompletionSource<Stone> Supply = new System.Threading.Tasks.TaskCompletionSource<Stone>();
             public System.Threading.Tasks.Task<Stone> CreateAsync(Vector3 position,Transform parent) => Supply.Task;
+        }
+        sealed class DelayedNextFactory : IStoneFactory
+        {
+            bool first=true;
+            public System.Threading.Tasks.Task<Stone> CreateAsync(Vector3 position,Transform parent)
+            {
+                if(first){first=false;return new StoneFactory(nextSeed:()=>123).CreateAsync(position,parent);}
+                return new System.Threading.Tasks.TaskCompletionSource<Stone>().Task;
+            }
+        }
+        [UnityTest] public IEnumerator WaitingForNextDoesNotFollowReleasedStone()
+        {
+            session.Initialize(new DelayedNextFactory(),session.Base,session.Ground);yield return null;yield return null;
+            yield return Orbit(new Vector2(100,-100));
+            var stone=session.Pending;var position=input.ViewCamera.transform.position;var rotation=input.ViewCamera.transform.rotation;
+            Assert.That(session.Release(stone),Is.True);Assert.That(session.Waiting,Is.True);
+            yield return new WaitForSeconds(.4f);
+            Assert.That(input.ViewCamera.transform.position,Is.EqualTo(position));
+            Assert.That(input.ViewCamera.transform.rotation,Is.EqualTo(rotation));
+            session.Remove(stone);yield return null;yield return null;
+            Assert.That(input.ViewCamera.transform.position,Is.EqualTo(position));
+            yield return Orbit(Vector2.right*100);
+            Assert.That(Vector3.Distance(position,input.ViewCamera.transform.position),Is.GreaterThan(.1f));
         }
         [UnityTest] public IEnumerator WaitingDisablesReleaseAndOldPressCannotActOnLateSupply()
         {
