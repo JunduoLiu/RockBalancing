@@ -14,12 +14,14 @@ namespace RockBalancing
         public RectTransform Root { get; private set; }
         public Text HeightLabel { get; private set; }
         public Button ShareButton { get; private set; }
+        public Button RestartButton { get; private set; }
         public Button DiscardButton { get; private set; }
         public Button ReleaseButton { get; private set; }
         Text message;
         Text pendingEdge;
         GameObject feedbackPanel;
         GameObject controls, confirmation;
+        RectTransform actionBar;
         readonly Color ink = new Color(.16f, .22f, .23f);
         readonly Color paper = new Color(.96f, .95f, .91f, .96f);
 
@@ -42,9 +44,10 @@ namespace RockBalancing
             feedbackPanel = feedback.gameObject;
             message = Label(feedback, "", Vector2.zero, Vector2.one, 13, TextAnchor.MiddleCenter);
             feedbackPanel.SetActive(false);
-            var bar = Panel(Root, "Actions", new Vector2(.67f,.90f), new Vector2(.94f,.965f), Color.clear, false);
-            ButtonAt(bar, "重新开始", Vector2.zero, new Vector2(.57f,1), () => ShowRestart(true));
-            ShareButton = ButtonAt(bar, "分享", new Vector2(.64f,0), Vector2.one, () => {});
+            var bar = Panel(Root, "Actions", new Vector2(.94f,.965f), new Vector2(.94f,.965f), Color.clear, false);
+            actionBar = bar; bar.pivot = Vector2.one;
+            RestartButton = ActionButton(bar, "重新开始", "rotate-ccw", () => ShowRestart(true));
+            ShareButton = ActionButton(bar, "分享", "share-2", () => {});
             ShareButton.gameObject.SetActive(false);
             controls = Panel(Root, "Adjustments", new Vector2(.06f,.02f), new Vector2(.94f,.16f), Color.clear, false).gameObject;
             var move = Panel(controls.transform, "Move", Vector2.zero, new Vector2(.56f,1), paper, true);
@@ -117,24 +120,68 @@ namespace RockBalancing
             var button = rect.gameObject.AddComponent<StoneActionButton>();
             button.Input = Input; button.Discard = discard;
             button.targetGraphic = rect.GetComponent<Image>();
-            Label(rect, title, Vector2.zero, Vector2.one, 17);
+            rect.gameObject.AddComponent<IconButtonPresentation>().Initialize(this, button, discard ? "弃置这颗" : "释放", discard ? "trash-2" : "arrow-down-to-line", ink);
             return button;
         }
         void LateUpdate()
         {
             if (controls == null || Session == null) return;
+            UpdateActionLayout();
+            RestartButton.interactable = !Input.Modal && !Session.ShareBusy;
             controls.SetActive(!Session.Waiting);
             retryButton.gameObject.SetActive(Session.Waiting);
             DiscardButton.interactable = ReleaseButton.interactable = Input.CanAct;
             HeightLabel.text = Session.Stabilizing ? "stablizing" : Session.CurrentHeightMm + " mm";
             HeightLabel.fontSize = HeightLabel.resizeTextMaxSize = Session.Stabilizing ? 28 : 44;
-            ShareButton.interactable = Session.CanShare;
+            ShareButton.interactable = Session.CanShare && !Input.Modal;
             message.text = Session.Feedback;
             feedbackPanel.SetActive(message.text.Length > 0 && !Session.Waiting && !Input.Modal);
             if(Session.Pending!=null)
                 UpdateEdge(pendingEdge,Session.Pending.transform.position,"待摆石头");
             else
                 pendingEdge.transform.parent.gameObject.SetActive(false);
+        }
+        Button ActionButton(Transform parent, string title, string icon, UnityEngine.Events.UnityAction action)
+        {
+            var rect = Panel(parent, title, Vector2.zero, Vector2.zero, paper, true);
+            var button = rect.gameObject.AddComponent<Button>();
+            button.targetGraphic = rect.GetComponent<Image>();
+            button.onClick.AddListener(action);
+            rect.gameObject.AddComponent<IconButtonPresentation>().Initialize(this, button, title, icon, ink);
+            return button;
+        }
+        void UpdateActionLayout()
+        {
+            // Keep at least 48 screen pixels even in short/narrow windows; the old
+            // percentage-only header made Share less than 44 px wide on a phone.
+            float scale = Mathf.Max(.01f, Root.GetComponent<Canvas>().scaleFactor);
+            float size = Mathf.Max(48, 48 / scale), gap = Mathf.Max(8, 8 / scale);
+            actionBar.sizeDelta = new Vector2(size * 2 + gap, size);
+            var restart = (RectTransform)RestartButton.transform;
+            var share = (RectTransform)ShareButton.transform;
+            restart.pivot = share.pivot = Vector2.zero;
+            restart.sizeDelta = share.sizeDelta = Vector2.one * size;
+            restart.anchoredPosition = Vector2.zero;
+            share.anchoredPosition = new Vector2(size + gap, 0);
+            HeightLabel.rectTransform.anchorMax = new Vector2(
+                Mathf.Min(.63f, .94f - (size * 2 + gap * 2) / Root.rect.width), .98f);
+            float height = Mathf.Max(Root.rect.height * .065f, 48 / scale);
+            LayoutStoneAction(ReleaseButton, height);
+            LayoutStoneAction(DiscardButton, height);
+            var feedback = (RectTransform)feedbackPanel.transform;
+            float bottom = Mathf.Max(.27f, .18f + (height + gap) / Root.rect.height);
+            feedback.anchorMin = new Vector2(.06f, bottom);
+            feedback.anchorMax = new Vector2(.94f, bottom + .07f);
+        }
+        static void LayoutStoneAction(Button button, float height)
+        {
+                var rect = (RectTransform)button.transform;
+                var min = rect.anchorMin; var max = rect.anchorMax;
+                min.y = max.y = .18f;
+                rect.anchorMin = min; rect.anchorMax = max;
+                rect.pivot = new Vector2(.5f, 0);
+                rect.sizeDelta = new Vector2(0, height);
+                rect.anchoredPosition = Vector2.zero;
         }
         public Text Label(Transform parent, string text, Vector2 min, Vector2 max, int size, TextAnchor align = TextAnchor.MiddleCenter)
         {

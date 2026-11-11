@@ -9,7 +9,7 @@ Open `Scenes/Balance.unity` and enter Play Mode. The scene creates its camera, b
 - Press **释放 / Release** to drop the selected stone and receive the next one. Empty-space taps and ending any drag never release. Rapid repeat clicks are ignored; release and discard bind to the stone selected when the button was pressed.
 - Drag empty world space to orbit; pinch to zoom. The mouse wheel also zooms in the Editor.
 - Discard throws the selected stone beside the base. A stone disappears at its first contact with the surrounding ground.
-- Restart requires confirmation. Share captures the current height and complete scene before displaying a preview.
+- The four main actions use Lucide icons: circular arrow = restart, connected nodes = share, down arrow onto a line = release, trash = discard. Desktop hover shows the action name. Touch targets stay at least 48 screen pixels in small windows. Pressed and unavailable states change contrast; disabled actions also dim the icon. Restart still requires the textual confirmation. Share captures the current height and complete scene before displaying a preview.
 
 The rules are defined in [specification #9](https://github.com/JunduoLiu/RockBalancing/issues/9), with the joystick and release-button interaction superseded by [incremental specification #27](https://github.com/JunduoLiu/RockBalancing/issues/27). Runtime code does not store a high score or serialized session.
 
@@ -36,3 +36,5 @@ Run Play Mode tests filtered to `RockBalancing` through Unity Test Runner or Pip
 `Fonts/BalanceSans.ttf` is a static, reduced character subset of Google Fonts Noto Sans SC, under the included OFL licence. `tools/subset_font.py` regenerates it from `.scratch/NotoSansSC.ttf`; download the upstream variable font from `https://github.com/google/fonts/tree/main/ofl/notosanssc` and run with Python/fonttools. Include all UI strings before generating the subset.
 
 The Web template includes Kazuhiko Arase's `qrcode-generator` JavaScript distribution, under the adjacent MIT licence: `https://github.com/kazuhikoarase/qrcode-generator`.
+
+The four action sprites use Lucide 0.468.0 (ISC, with Feather MIT portions). Original SVGs are in `tools/lucide/`; source/license and regeneration details are in [Icons/Lucide/README.md](Icons/Lucide/README.md). Web builds include `lucide-licenses.txt`.
