@@ -65,13 +65,13 @@ namespace RockBalancing
             float releaseSize = Mathf.Max(minSize, .22f * unitsPerMetre);
             // Build neighboring hit areas around the actual controls. Height buttons
             // can grow away from their shared edge when the pair is close on screen.
-            float releaseEdge = (releasePoint.x + lowerPoint.x) * .5f;
-            float heightEdge = (lowerPoint.x + liftPoint.x) * .5f;
-            float stickEdge = (liftPoint.x + stickPoint.x) * .5f;
-            Place(release, releasePoint, releaseSize, 0, releaseEdge);
-            Place(lower, lowerPoint, keySize, releaseEdge, heightEdge);
-            Place(lift, liftPoint, keySize, heightEdge, stickEdge);
-            Place(stick, stickPoint, stickSize, stickEdge, 1);
+            float stickEdge = (stickPoint.x + liftPoint.x) * .5f;
+            float heightEdge = (liftPoint.x + lowerPoint.x) * .5f;
+            float releaseEdge = (lowerPoint.x + releasePoint.x) * .5f;
+            Place(stick, stickPoint, stickSize, 0, stickEdge);
+            Place(lift, liftPoint, keySize, stickEdge, heightEdge);
+            Place(lower, lowerPoint, keySize, heightEdge, releaseEdge);
+            Place(release, releasePoint, releaseSize, releaseEdge, 1);
         }
 
         public void ShowControls() => cabinet.ShowControls(stickOffset, raising, lowering, ReleaseButton.IsPressed);
