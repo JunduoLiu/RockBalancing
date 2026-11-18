@@ -352,6 +352,7 @@ namespace RockBalancing.Tests
             yield return null;
             Touch(1, TouchPhase.Ended, previous);
             yield return null;
+            yield return null; // The first front frame is placed in LateUpdate after pointer-up.
             AssertFacing(Vector3.forward);
             Assert.That(camera.rect, Is.EqualTo(new Rect(0, 0, 1, 1)));
             Assert.That(Vector3.Distance(camera.WorldToViewportPoint(reference), front), Is.LessThan(.0001f));
