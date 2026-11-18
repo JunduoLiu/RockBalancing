@@ -10,12 +10,15 @@ namespace RockBalancing
         public Action<bool> Held;
         public Func<bool> CanBegin;
         public bool VerticalOnly;
+        public bool RelativeToPress;
         public RectTransform Handle;
         int pointer = int.MinValue;
+        Vector2 pressPosition;
         public void OnPointerDown(PointerEventData e)
         {
             if (pointer != int.MinValue || (CanBegin != null && !CanBegin())) return;
             pointer = e.pointerId;
+            pressPosition = e.position;
             Held?.Invoke(true);
             ReadOffset(e);
         }
@@ -32,7 +35,11 @@ namespace RockBalancing
         {
             var rect = (RectTransform)transform;
             if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(rect, e.position, e.pressEventCamera, out var p)) return;
-            p -= rect.rect.center;
+            var center = rect.rect.center;
+            if (RelativeToPress &&
+                !RectTransformUtility.ScreenPointToLocalPointInRectangle(rect, pressPosition, e.pressEventCamera, out center))
+                return;
+            p -= center;
             float radius = Mathf.Max(1, Mathf.Min(rect.rect.width, rect.rect.height) * .36f);
             var value = VerticalOnly ? new Vector2(0, Mathf.Clamp(p.y / radius, -1, 1)) : Vector2.ClampMagnitude(p / radius, 1);
             if (Handle != null) Handle.anchoredPosition = value * radius;

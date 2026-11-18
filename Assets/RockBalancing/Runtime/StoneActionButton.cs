@@ -1,6 +1,4 @@
 using UnityEngine.EventSystems;
-using UnityEngine.InputSystem;
-using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 namespace RockBalancing
@@ -12,6 +10,7 @@ namespace RockBalancing
         public bool Discard;
         Stone selected;
         int pointer = int.MinValue;
+        internal bool IsPressed => pointer != int.MinValue;
 
         public override void OnPointerDown(PointerEventData e)
         {
@@ -23,13 +22,8 @@ namespace RockBalancing
         public override void OnPointerClick(PointerEventData e)
         {
             var stone = selected;
-            bool valid = pointer == e.pointerId && e.button == PointerEventData.InputButton.Left && e.clickCount <= 1;
-            // InputSystemUIInputModule can emit a click for a canceled touch.
-            // Check its source before the later scene-input update sees cancellation.
-            if (e is ExtendedPointerEventData touchEvent && touchEvent.device is Touchscreen screen)
-                foreach (var touch in screen.touches)
-                    if (touch.touchId.ReadValue() == touchEvent.touchId && touch.phase.ReadValue() == UnityEngine.InputSystem.TouchPhase.Canceled)
-                        valid = false;
+            bool valid = pointer == e.pointerId && e.button == PointerEventData.InputButton.Left && e.clickCount <= 1 &&
+                !PointerCancellation.IsCanceled(e);
             Cancel();
             if (valid && IsInteractable()) Input.ActOnStone(stone, Discard);
         }
