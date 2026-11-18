@@ -9,7 +9,7 @@
 使用 Unity **6000.3.20f1**。在 Unity Hub 中添加本仓库根目录，即同时包含
 `Assets/`、`Packages/` 和 `ProjectSettings/` 的文件夹。
 
-当前可玩场景为 `Assets/RockBalancing/Scenes/Balance.unity`，打开后进入 Play Mode。
+原版场景为 `Assets/RockBalancing/Scenes/Balance.unity`，STRATA 街机版场景为 `Assets/RockBalancing/Scenes/Arcade.unity`。打开对应场景后进入 Play Mode。两版 Web 构建的入口分别为 `/` 和 `/arcade/`。街机版的四面取景、操作验证和落石截图见[浏览器验收记录](docs/experiments/issue-36-arcade.md)。
 操作方式、Web 构建和测试命令见[游戏说明](Assets/RockBalancing/README.md)。
 
 `Library/`、`Temp/`、`Logs/`、`UserSettings/` 等本地生成内容由 Unity 重建，不纳入版本控制。

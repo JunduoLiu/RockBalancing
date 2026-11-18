@@ -6,6 +6,8 @@ Open `Scenes/Balance.unity` and enter Play Mode. The scene creates its camera, b
 
 Open `Scenes/Arcade.unity` in Play Mode. Drag the joystick to move the claw left, right, toward the front or toward the rear. Hold the two mint buttons to raise or lower it. Drag the suspended stone to rotate it, then tap the orange release button to drop it. The measured tower height updates under the same rules as the original game.
 
+Tap an edge arrow to move to the adjacent window. The front window accepts placement input. Holding the joystick, a height button or the stone locks the view until you let go. After release you can switch windows immediately to follow the falling stone. In 设置, turn on 刻度旋转 to see three cabinet-axis rings when holding the stone. Each drag can turn one full step, initially 15°. Lift your finger to start another step.
+
 With Web selected as the build platform, use `RockBalancing.Editor.BuildGame.BuildWebVariants` to build both editions. Pass `-buildTarget WebGL` when starting Unity in batch mode. Serve `Builds/Web` as one static site and open `/` for the original game or `/arcade/` for STRATA. For a local preview run `python -m http.server 8000 --directory Builds/Web` from the project root and open the corresponding path at `http://localhost:8000`. `BuildWeb` and `BuildArcadeWeb` also build the editions individually.
 
 ## Arcade cabinet model
