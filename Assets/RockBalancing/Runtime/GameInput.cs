@@ -10,6 +10,8 @@ namespace RockBalancing
     {
         public GameSession Session;
         public Camera ViewCamera;
+        public ArcadeCabinet Cabinet;
+        public bool IsOperating => Adjusting || (active && rotating) || keyboardHeld;
         public ObservationOcclusion Occlusion { get; private set; }
         bool modal;
         public bool Modal
@@ -57,8 +59,11 @@ namespace RockBalancing
             // Let HTML share controls and other page content own their own keys.
             WebGLInput.captureAllKeyboardInput = false;
 #endif
-            Occlusion = gameObject.AddComponent<ObservationOcclusion>();
-            Occlusion.Initialize(Session);
+            if (Cabinet == null)
+            {
+                Occlusion = gameObject.AddComponent<ObservationOcclusion>();
+                Occlusion.Initialize(Session);
+            }
             Session.PendingChanged += CancelForStoneChange;
             Session.Restarted += ResetView;
             if(Session.Pending!=null) target=Session.Pending.transform.position;
@@ -132,7 +137,19 @@ namespace RockBalancing
                 return;
             }
             ReadKeyboard();
-            if (count >= 2)
+            if (Cabinet != null && touchId != -1 && touch != null)
+            {
+                // A second finger does not turn a press on the stone into a pinch.
+                foreach (var finger in touch.touches)
+                    if (finger.touchId.ReadValue() == touchId && finger.press.isPressed)
+                    {
+                        Move(finger.position.ReadValue());
+                        return;
+                    }
+                CancelGesture();
+                return;
+            }
+            if (count >= 2 && Cabinet == null)
             {
                 active = false;
                 blocked = true;
@@ -142,9 +159,14 @@ namespace RockBalancing
                 return;
             }
             if (pinch > 0) { if (count == 0) { CancelGesture(); blocked = false; } return; }
-            if (count == 1)
+            if (count > 0)
             {
-                if (touchId != first.touchId.ReadValue()) { touchId = first.touchId.ReadValue(); Begin(first.position.ReadValue()); }
+                if (touchId != first.touchId.ReadValue())
+                {
+                    if (Cabinet != null && first.phase.ReadValue() != UnityEngine.InputSystem.TouchPhase.Began) return;
+                    touchId = first.touchId.ReadValue();
+                    Begin(first.position.ReadValue());
+                }
                 else Move(first.position.ReadValue());
                 return;
             }
@@ -166,7 +188,7 @@ namespace RockBalancing
             if (mouse.leftButton.isPressed) Move(p);
             if (mouse.leftButton.wasReleasedThisFrame) End(p);
             float scroll=mouse.scroll.ReadValue().y;
-            if(scroll!=0) Zoom(distance - scroll * .0015f);
+            if (Cabinet == null && scroll != 0) Zoom(distance - scroll * .0015f);
         }
 
         static bool MovementKeyHeld()
@@ -205,12 +227,14 @@ namespace RockBalancing
             active = !blocked;
             selected = Session.Pending;
             rotating = false;
+            if (Cabinet != null && !CanAdjust) { active = false; return; }
             if (active && ObservationHit(ViewCamera.ScreenPointToRay(position), out var hit))
             {
                 var stone = hit.collider.GetComponent<Stone>();
                 rotating = stone != null && stone == selected;
                 if (stone != null && stone != selected) blocked = true;
             }
+            if (Cabinet != null && !rotating) active = false;
         }
         bool ObservationHit(Ray ray, out RaycastHit nearest)
         {
@@ -278,7 +302,7 @@ namespace RockBalancing
             float dt = Mathf.Min(Time.deltaTime, .1f);
             // Use this frame's horizontal observation heading, independent of pitch,
             // ground clearance corrections and the previous frame's camera transform.
-            var heading = Quaternion.Euler(0, yaw, 0);
+            var heading = Cabinet == null ? Quaternion.Euler(0, yaw, 0) : ArcadeCabinet.FrontHeading;
             var right = heading * Vector3.right;
             var forward = heading * Vector3.forward;
             // Combine sources once, so simultaneous touch/mouse pads and keyboard
@@ -286,15 +310,29 @@ namespace RockBalancing
             var padDirection = planarStone==stone ? planar.normalized * Strength(planar.magnitude) : Vector2.zero;
             var direction = Vector2.ClampMagnitude(padDirection+keyboardPlanar,1);
             if (direction != Vector2.zero)
-                Session.Adjust(stone, stone.transform.position + (right * direction.x + forward * direction.y) * (MaximumPlanarSpeed * dt), stone.transform.rotation);
+                MoveStoneBy(stone, (right * direction.x + forward * direction.y) * (MaximumPlanarSpeed * dt));
             float heightInput=Mathf.Clamp((liftStone==stone ? Mathf.Sign(lift)*Strength(Mathf.Abs(lift)) : 0)+keyboardLift,-1,1);
             if(heightInput!=0)
-                Session.Adjust(stone, stone.transform.position + Vector3.up * (heightInput * MaximumHeightSpeed * dt), stone.transform.rotation);
+                MoveStoneBy(stone, Vector3.up * (heightInput * MaximumHeightSpeed * dt));
+        }
+
+        void MoveStoneBy(Stone stone, Vector3 delta)
+        {
+            var origin = stone.transform.position;
+            var destination = origin + delta;
+            if (Cabinet != null) destination = Cabinet.LimitTravel(origin, destination);
+            Session.Adjust(stone, destination, stone.transform.rotation);
         }
         void LateUpdate()
         {
             if (Session == null || ViewCamera == null) return;
             MoveHeldStone();
+            if (Cabinet != null)
+            {
+                Cabinet.PlaceCamera(ViewCamera);
+                Cabinet.Follow(Session.Pending);
+                return;
+            }
             // A scene gesture owns the observation centre until all its fingers end.
             // Otherwise releasing a joystick while still orbiting/pinching makes the
             // centre drift under the observing finger.

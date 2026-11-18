@@ -9,6 +9,8 @@ namespace RockBalancing.Editor
     public static class BuildGame
     {
         public const string ScenePath = "Assets/RockBalancing/Scenes/Balance.unity";
+        public const string ArcadeScenePath = "Assets/RockBalancing/Scenes/Arcade.unity";
+        const string WebOutput = "Builds/Web";
         [MenuItem("Rock Balancing/Create playable scene")]
         public static void CreateScene()
         {
@@ -23,15 +25,37 @@ namespace RockBalancing.Editor
             ConfigureAssets(bootstrap);
             if (!EditorSceneManager.SaveScene(scene, ScenePath))
                 throw new System.Exception("Could not save playable scene");
-            EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
+            EditorBuildSettings.scenes = File.Exists(ArcadeScenePath)
+                ? new[] { new EditorBuildSettingsScene(ScenePath, true), new EditorBuildSettingsScene(ArcadeScenePath, true) }
+                : new[] { new EditorBuildSettingsScene(ScenePath, true) };
             AssetDatabase.SaveAssets();
         }
-        public static void BuildWeb()
+        public static void BuildWeb() => BuildWebVariant(ScenePath, WebOutput, "Rock Balance");
+        public static void BuildArcadeWeb()
+        {
+            var productName = PlayerSettings.productName;
+            try
+            {
+                BuildWebVariant(ArcadeScenePath, Path.Combine(WebOutput, "arcade"), "STRATA");
+            }
+            finally
+            {
+                PlayerSettings.productName = productName;
+            }
+        }
+
+        public static void BuildWebVariants()
+        {
+            BuildWeb();
+            BuildArcadeWeb();
+        }
+
+        static void BuildWebVariant(string scenePath, string output, string productName)
         {
             if(!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL,BuildTarget.WebGL))
                 throw new System.InvalidOperationException("Install Web Build Support for this Unity version, then restart the Editor.");
             PlayerSettings.companyName = "RockBalancing";
-            PlayerSettings.productName = "Rock Balance";
+            PlayerSettings.productName = productName;
             PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
             PlayerSettings.WebGL.decompressionFallback = true;
             PlayerSettings.WebGL.dataCaching = false;
@@ -40,14 +64,13 @@ namespace RockBalancing.Editor
             PlayerSettings.defaultWebScreenWidth = 430;
             PlayerSettings.defaultWebScreenHeight = 900;
             var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions {
-                scenes = new[] { ScenePath }, locationPathName = "Builds/Web", target = BuildTarget.WebGL,
+                scenes = new[] { scenePath }, locationPathName = output, target = BuildTarget.WebGL,
                 options = BuildOptions.None
             });
             if (report.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
                 throw new System.Exception("Web build failed: " + report.summary.result);
             // A module installed while the Editor is open can report success even
             // when its postprocessor did not load and no browser files were written.
-            string output="Builds/Web";
             if(!File.Exists(Path.Combine(output,"index.html")) || !Directory.Exists(Path.Combine(output,"Build")) ||
                 Directory.GetFiles(Path.Combine(output,"Build"),"*.wasm*").Length==0 ||
                 Directory.GetFiles(Path.Combine(output,"Build"),"*.loader.js").Length==0 ||

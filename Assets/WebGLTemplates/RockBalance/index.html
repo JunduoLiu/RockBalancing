@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
   <meta name="theme-color" content="#dce4dc">
-  <title>叠石 · Rock Balance</title>
+  <title>{{{ PRODUCT_NAME === 'STRATA' ? 'STRATA · 叠石街机' : '叠石 · Rock Balance' }}}</title>
   <style>
     * { box-sizing:border-box } html,body { margin:0;width:100%;height:100%;overflow:hidden;background:#dce4dc;color:#293b3b;font-family:system-ui,sans-serif }
     #game { position:fixed;inset:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);touch-action:none }
@@ -19,8 +19,12 @@
   </style>
 </head>
 <body>
-  <main id="game"><canvas id="unity-canvas" tabindex="0" aria-label="叠石游戏"></canvas></main>
-  <section id="loading"><h1>叠 石</h1><span>一点耐心，一点重力。</span><progress id="load-progress" max="1" value="0"></progress><p id="load-message">正在准备石头…</p></section>
+  <main id="game"><canvas id="unity-canvas" tabindex="0" aria-label="{{{ PRODUCT_NAME === 'STRATA' ? 'STRATA 叠石街机' : '叠石游戏' }}}"></canvas></main>
+  <section id="loading"><h1>{{{ PRODUCT_NAME === 'STRATA' ? 'STRATA' : '叠 石' }}}</h1>
+#if PRODUCT_NAME != "STRATA"
+    <span>一点耐心，一点重力。</span>
+#endif
+    <progress id="load-progress" max="1" value="0"></progress><p id="load-message">正在准备石头…</p></section>
   <section id="share-panel" role="dialog" aria-modal="true" aria-label="分享当前高度" hidden>
     <img id="share-image" alt="点击时的完整现场和当前高度">
     <p id="share-message" aria-live="polite"></p>

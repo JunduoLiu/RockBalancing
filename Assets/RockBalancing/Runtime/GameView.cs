@@ -22,6 +22,7 @@ namespace RockBalancing
         GameObject feedbackPanel;
         GameObject controls, confirmation;
         RectTransform actionBar;
+        ArcadeConsole arcadeConsole;
         readonly Color ink = new Color(.16f, .22f, .23f);
         readonly Color paper = new Color(.96f, .95f, .91f, .96f);
 
@@ -51,6 +52,29 @@ namespace RockBalancing
             RestartButton = ActionButton(bar, "重新开始", "rotate-ccw", () => ShowRestart(true));
             ShareButton = ActionButton(bar, "分享", "share-2", () => {});
             ShareButton.gameObject.SetActive(false);
+            if (Input.Cabinet == null)
+                BuildOriginalControls();
+            else
+            {
+                var deck = Panel(Root, "Cabinet controls", Vector2.zero, Vector2.one, Color.clear, false);
+                controls = deck.gameObject;
+                arcadeConsole = new ArcadeConsole(this, deck, Input.Cabinet);
+                ReleaseButton = arcadeConsole.ReleaseButton;
+            }
+            var retry = ButtonAt(Root, "等待下一颗 · 点击重试", new Vector2(.22f,.07f), new Vector2(.78f,.13f), () => { _ = Session.RequestNextAsync(); });
+            retry.gameObject.name = "Retry";
+            retryButton = retry;
+            confirmation = Panel(Root, "Restart confirmation", Vector2.zero, Vector2.one, new Color(.1f,.15f,.16f,.85f), true).gameObject;
+            var dialog = Panel(confirmation.transform, "Dialog", new Vector2(.08f,.36f), new Vector2(.92f,.66f), paper, true);
+            Label(dialog, "开始一座新石塔？", new Vector2(.05f,.6f), new Vector2(.95f,.95f), 24);
+            Label(dialog, "当前场景将被清空。", new Vector2(.05f,.4f), new Vector2(.95f,.65f), 14);
+            ButtonAt(dialog, "继续搭建", new Vector2(.05f,.1f), new Vector2(.48f,.35f), () => ShowRestart(false));
+            ButtonAt(dialog, "重新开始", new Vector2(.52f,.1f), new Vector2(.95f,.35f), () => { Session.Restart(); ShowRestart(false); });
+            confirmation.SetActive(false);
+            if (arcadeConsole == null) pendingEdge=EdgeLabel("Pending direction");
+        }
+        void BuildOriginalControls()
+        {
             controls = Panel(Root, "Adjustments", new Vector2(.06f,.02f), new Vector2(.94f,.16f), Color.clear, false).gameObject;
             var move = Panel(controls.transform, "Move", Vector2.zero, new Vector2(.56f,1), paper, true);
             Label(move, "前", new Vector2(.4f,.77f), new Vector2(.6f,1), 13);
@@ -74,17 +98,6 @@ namespace RockBalancing
             vertical.Handle = Handle(lift, "升降");
             ReleaseButton = StoneButton("释放", new Vector2(.06f,.18f), new Vector2(.59f,.245f), false);
             DiscardButton = StoneButton("弃置这颗", new Vector2(.67f,.18f), new Vector2(.94f,.245f), true);
-            var retry = ButtonAt(Root, "等待下一颗 · 点击重试", new Vector2(.22f,.07f), new Vector2(.78f,.13f), () => { _ = Session.RequestNextAsync(); });
-            retry.gameObject.name = "Retry";
-            retryButton = retry;
-            confirmation = Panel(Root, "Restart confirmation", Vector2.zero, Vector2.one, new Color(.1f,.15f,.16f,.85f), true).gameObject;
-            var dialog = Panel(confirmation.transform, "Dialog", new Vector2(.08f,.36f), new Vector2(.92f,.66f), paper, true);
-            Label(dialog, "开始一座新石塔？", new Vector2(.05f,.6f), new Vector2(.95f,.95f), 24);
-            Label(dialog, "当前场景将被清空。", new Vector2(.05f,.4f), new Vector2(.95f,.65f), 14);
-            ButtonAt(dialog, "继续搭建", new Vector2(.05f,.1f), new Vector2(.48f,.35f), () => ShowRestart(false));
-            ButtonAt(dialog, "重新开始", new Vector2(.52f,.1f), new Vector2(.95f,.35f), () => { Session.Restart(); ShowRestart(false); });
-            confirmation.SetActive(false);
-            pendingEdge=EdgeLabel("Pending direction");
         }
         Text EdgeLabel(string name)
         {
@@ -132,12 +145,15 @@ namespace RockBalancing
             RestartButton.interactable = !Input.Modal && !Session.ShareBusy;
             controls.SetActive(!Session.Waiting);
             retryButton.gameObject.SetActive(Session.Waiting);
-            DiscardButton.interactable = ReleaseButton.interactable = Input.CanAct;
+            ReleaseButton.interactable = Input.CanAct;
+            if (DiscardButton != null) DiscardButton.interactable = Input.CanAct;
+            arcadeConsole?.Layout();
             HeightLabel.text = Session.Stabilizing ? "stablizing" : Session.CurrentHeightMm + " mm";
             HeightLabel.fontSize = HeightLabel.resizeTextMaxSize = Session.Stabilizing ? 28 : 44;
             ShareButton.interactable = Session.CanShare && !Input.Modal;
             message.text = Session.Feedback;
             feedbackPanel.SetActive(message.text.Length > 0 && !Session.Waiting && !Input.Modal);
+            if (pendingEdge == null) return;
             if(Session.Pending!=null)
                 UpdateEdge(pendingEdge,Session.Pending.transform.position,"待摆石头");
             else
@@ -158,7 +174,8 @@ namespace RockBalancing
             // percentage-only header made Share less than 44 px wide on a phone.
             float scale = Mathf.Max(.01f, Root.GetComponent<Canvas>().scaleFactor);
             float size = Mathf.Max(48, 48 / scale), gap = Mathf.Max(8, 8 / scale);
-            actionBar.sizeDelta = new Vector2(size * 2 + gap, size);
+            float actionWidth = arcadeConsole == null ? size * 2 + gap : size;
+            actionBar.sizeDelta = new Vector2(actionWidth, size);
             var restart = (RectTransform)RestartButton.transform;
             var share = (RectTransform)ShareButton.transform;
             restart.pivot = share.pivot = Vector2.zero;
@@ -166,7 +183,8 @@ namespace RockBalancing
             restart.anchoredPosition = Vector2.zero;
             share.anchoredPosition = new Vector2(size + gap, 0);
             HeightLabel.rectTransform.anchorMax = new Vector2(
-                Mathf.Min(.63f, .94f - (size * 2 + gap * 2) / Root.rect.width), .98f);
+                Mathf.Min(.63f, .94f - (actionWidth + gap) / Root.rect.width), .98f);
+            if (arcadeConsole != null) return;
             float height = Mathf.Max(Root.rect.height * .065f, 48 / scale);
             LayoutStoneAction(ReleaseButton, height);
             LayoutStoneAction(DiscardButton, height);

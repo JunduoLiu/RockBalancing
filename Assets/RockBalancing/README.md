@@ -2,6 +2,12 @@
 
 Open `Scenes/Balance.unity` and enter Play Mode. The scene creates its camera, base, surrounding ground, UI and session at runtime. It uses the new Input System and URP.
 
+## Arcade edition
+
+Open `Scenes/Arcade.unity` in Play Mode. Drag the joystick to move the claw left, right, toward the front or toward the rear. Hold the two mint buttons to raise or lower it. Drag the suspended stone to rotate it, then tap the orange release button to drop it. The measured tower height updates under the same rules as the original game.
+
+With Web selected as the build platform, use `RockBalancing.Editor.BuildGame.BuildWebVariants` to build both editions. Pass `-buildTarget WebGL` when starting Unity in batch mode. Serve `Builds/Web` as one static site and open `/` for the original game or `/arcade/` for STRATA. For a local preview run `python -m http.server 8000 --directory Builds/Web` from the project root and open the corresponding path at `http://localhost:8000`. `BuildWeb` and `BuildArcadeWeb` also build the editions individually.
+
 ## Arcade cabinet model
 
 Open `Arcade/Review/StrataCabinetReview.unity` to inspect the assembled cabinet with sample stones in the Game view. Drag `Arcade/StrataCabinet.fbx` into a scene to reuse the cabinet. With unit scale, place its origin at the centre of the game's 1 × 0.16 × 1 m pedestal. The control panel faces local +Z. From the controls, left is +X.
@@ -28,7 +34,7 @@ The camera holds its observation centre while adjusting a stone or holding a sce
 
 Use `Rock Balancing > Update scene assets` after changing fonts or material templates. The referenced material assets keep the runtime shaders available in builds. `Portrait preview` sets a 430 × 900 Game View.
 
-Install the matching Unity Web Build Support module and restart the Editor, then invoke `RockBalancing.Editor.BuildGame.BuildWeb` through the Unity Pipeline `script eval` command, or use that method as a batch-mode execute method. Output is `Builds/Web`. The build uses the included `RockBalance` Web template, Gzip compression and Unity's decompression fallback so static hosts do not need custom compression headers. Upload the complete output directory to an HTTPS static host; do not open `index.html` as a local file. The builder checks that the page, loader, data, framework and WebAssembly output are present before reporting success.
+Install the matching Unity Web Build Support module and restart the Editor, then invoke `RockBalancing.Editor.BuildGame.BuildWeb` through the Unity Pipeline `script eval` command, or pass `-buildTarget WebGL` and use that method as a batch-mode execute method. Output is `Builds/Web`. The build uses the included `RockBalance` Web template, Gzip compression and Unity's decompression fallback so static hosts do not need custom compression headers. Upload the complete output directory to an HTTPS static host; do not open `index.html` as a local file. The builder checks that the page, loader, data, framework and WebAssembly output are present before reporting success.
 
 The Web template composes a portrait card with the captured millimetre value, full scene and a QR code pointing to the current game URL. Supported browsers offer a second, explicit system-share button so the browser has a fresh user gesture. Save-image and copy-link controls remain available. Failed generation retries the original captured image; restarting invalidates previous callbacks.
 
