@@ -2,6 +2,12 @@
 
 Open `Scenes/Balance.unity` and enter Play Mode. The scene creates its camera, base, surrounding ground, UI and session at runtime. It uses the new Input System and URP.
 
+## Arcade cabinet model
+
+Open `Arcade/Review/StrataCabinetReview.unity` to inspect the assembled cabinet with sample stones in the Game view. Drag `Arcade/StrataCabinet.fbx` into a scene to reuse the cabinet. With unit scale, place its origin at the centre of the game's 1 × 0.16 × 1 m pedestal. The control panel faces local +Z. From the controls, left is +X.
+
+The four glass panes, joystick, buttons, bridge, trolley, cable and claw head have separate transforms. The cable pivots at its upper end. The review scene supplies the floor, pedestal and sample stones around the cabinet.
+
 ## Controls
 
 - Hold the bottom joystick away from its centre to move horizontally; a larger offset moves faster. Return to centre or let go to stop. The separate lift control works the same way vertically, and both controls can be held together.
