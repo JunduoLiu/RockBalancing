@@ -39,6 +39,9 @@ namespace RockBalancing.Tests
             var stone = session.Pending;
             Assert.That(stone, Is.Not.Null);
             var initial = stone.transform.position;
+            var initialCameraPosition = camera.transform.position;
+            var initialCameraRotation = camera.transform.rotation;
+            float initialFov = camera.fieldOfView;
             var stick = ControlPoint(root, "Move");
             var height = initial.y;
             yield return Press(stick, new Vector2(-30, 30), .24f);
@@ -54,6 +57,9 @@ namespace RockBalancing.Tests
             Assert.That(stone.transform.position.y, Is.LessThan(height - .03f));
             Assert.That(stone.transform.position.x, Is.EqualTo(planarPosition.x).Within(.001f));
             Assert.That(stone.transform.position.z, Is.EqualTo(planarPosition.z).Within(.001f));
+            Assert.That(camera.transform.position, Is.EqualTo(initialCameraPosition));
+            Assert.That(camera.transform.rotation, Is.EqualTo(initialCameraRotation));
+            Assert.That(camera.fieldOfView, Is.EqualTo(initialFov));
 
             var position = stone.transform.position;
             var rotation = stone.transform.rotation;
@@ -68,6 +74,7 @@ namespace RockBalancing.Tests
             yield return Press(ControlPoint(root, "Release"), Vector2.zero, .03f);
             Assert.That(stone.Released, Is.True);
             Assert.That(session.Pending, Is.Not.Null.And.Not.SameAs(stone));
+            Assert.That(camera.transform.position, Is.EqualTo(initialCameraPosition));
             yield return new WaitForSeconds(1);
             Assert.That(stone.transform.position.y, Is.LessThan(position.y));
             Assert.That(session.CurrentHeightMm, Is.GreaterThan(0));

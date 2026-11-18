@@ -25,11 +25,18 @@ namespace RockBalancing
         Vector3 liftHome, lowerHome, releaseHome;
         const float WindowHeight = 1.159f;
         const float GantryClearance = .03f;
+        const float CameraDistance = 4.97f;
+        const float FrontPitch = 15f;
+        const float SupplyFollowSeconds = .18f;
+        const float MinimumLift = .70f;
+        const float LiftAllowance = .34f;
         const float OpenSeconds = .10f;
         const float ReturnSeconds = .16f;
         const float CloseSeconds = .14f;
         Vector3 releaseFrom;
-        float jawReach, jawAngle, releaseAngle, releaseElapsed, extension, maximumLift;
+        float jawReach, jawAngle, releaseAngle, releaseElapsed, extension, roofCeiling;
+        float supplyRise, supplyVelocity, initialLift, maximumLift;
+        Vector3 cameraFocus;
         bool releasing;
         Stone suppliedStone;
         int face;
@@ -59,6 +66,7 @@ namespace RockBalancing
             lowerHome = LowerButton.position;
             releaseHome = ReleaseButton.position;
             roofHome = roof.position;
+            roofCeiling = roof.GetComponent<Renderer>().bounds.min.y;
             bridgeHome = bridge.position;
             trolleyHome = trolley.position;
             cableHome = cable.position;
@@ -78,13 +86,14 @@ namespace RockBalancing
 
         public void PlaceCamera(Camera camera)
         {
-            // Use the full render surface every frame. The camera's automatic aspect
-            // can already reflect the cropped side viewport from the previous frame.
-            var target = camera.targetTexture;
-            float renderAspect = target != null
-                ? (float)target.width / target.height
-                : (float)Screen.width / Mathf.Max(1, Screen.height);
+            if (IsFront)
+            {
+                PlacePerspectiveCamera(camera, 0, FrontPitch);
+                return;
+            }
+
             var aroundCabinet = Quaternion.Euler(0, -face * 90, 0);
+            float renderAspect = RenderAspect(camera);
             camera.orthographic = true;
             if (face % 2 != 0)
             {
@@ -94,14 +103,34 @@ namespace RockBalancing
 
             camera.rect = new Rect(0, 0, 1, 1);
             camera.aspect = renderAspect;
-            // The front pitch shows the tops of the physical controls through the same
-            // frame as the claw and tower. The rear looks over the lower cabinet trim.
-            var focus = new Vector3(0, (IsFront ? .38f : .43f) + extension * .5f, 0);
-            var offset = new Vector3(0, IsFront ? 1.28f : .76f, 4.8f);
+            var focus = Vector3.up * (.43f + extension * .5f);
+            var offset = new Vector3(0, .76f, 4.8f);
             camera.orthographicSize = Mathf.Max(1.25f, .86f / renderAspect) + extension * .53f;
-            camera.transform.SetPositionAndRotation(
-                focus + aroundCabinet * offset,
-                aroundCabinet * Quaternion.Euler(IsFront ? 14.93f : 9f, 180, 0));
+            camera.transform.SetPositionAndRotation(focus + aroundCabinet * offset, aroundCabinet * Quaternion.Euler(9, 180, 0));
+        }
+
+        internal void PlacePerspectiveCamera(Camera camera, float azimuth, float pitch)
+        {
+            float aspect = RenderAspect(camera);
+            camera.orthographic = false;
+            camera.rect = new Rect(0, 0, 1, 1);
+            camera.aspect = aspect;
+            // Fit the upper working window and its horizontal footprint. The angular
+            // bounds cover the cabinet around the full orbit, independent of tower height.
+            float halfFovTangent = Mathf.Max(.36f, .245f / aspect);
+            camera.fieldOfView = 2 * Mathf.Atan(halfFovTangent) * Mathf.Rad2Deg;
+            var rotation = Quaternion.Euler(pitch, 180 + azimuth, 0);
+            camera.transform.SetPositionAndRotation(cameraFocus + rotation * Vector3.back * CameraDistance, rotation);
+        }
+
+        static float RenderAspect(Camera camera)
+        {
+            // Use the full render surface every frame. The camera's automatic aspect
+            // can already reflect the cropped side viewport from the previous frame.
+            var target = camera.targetTexture;
+            return target != null
+                ? (float)target.width / target.height
+                : (float)Mathf.Max(1, Screen.width) / Mathf.Max(1, Screen.height);
         }
 
         void PlaceSideCamera(Camera camera, Quaternion aroundCabinet, float renderAspect)
@@ -143,7 +172,7 @@ namespace RockBalancing
         {
             if (pending == suppliedStone) return;
             suppliedStone = pending;
-            if (pending != null) maximumLift = Mathf.Max(.70f, pending.transform.position.y + .34f);
+            if (pending != null) initialLift = maximumLift = Mathf.Max(MinimumLift, pending.transform.position.y + LiftAllowance);
         }
 
         public void AnimateRelease()
@@ -154,12 +183,29 @@ namespace RockBalancing
             releasing = true;
         }
 
-        public void Follow(Stone pending, float towerTop)
+        public void Follow(GameSession session)
         {
+            var pending = session.Pending;
+            float towerTop = session.TowerTop();
+            float targetRise = towerTop - session.BaseTop;
+            supplyRise = Mathf.SmoothDamp(supplyRise, targetRise, ref supplyVelocity, SupplyFollowSeconds);
+            var supply = session.StandardSupplyPoint;
+            cameraFocus = supply + Vector3.up * (supplyRise - targetRise);
+
             TrackSupply(pending);
-            if (pending == null && !releasing) return;
+            if (pending != null)
+            {
+                // Retain the player's release height unless it exceeds the lift range
+                // as the working window returns from an earlier, taller tower.
+                float retreatSupply = Mathf.Max(cameraFocus.y, supply.y);
+                maximumLift = retreatSupply < session.PendingSupplyHeight
+                    ? Mathf.Min(initialLift, Mathf.Max(MinimumLift, retreatSupply + LiftAllowance))
+                    : initialLift;
+                if (maximumLift < initialLift) session.LowerPendingTo(maximumLift);
+            }
+
             var gripPoint = claw.position;
-            float grip = releaseAngle;
+            float grip = jawAngle;
             if (pending != null)
             {
                 gripPoint = pending.transform.position;
@@ -181,8 +227,10 @@ namespace RockBalancing
                 releasing = releaseElapsed < duration;
             }
 
-            float headroom = Mathf.Max(Mathf.Max(head.y, gripPoint.y) + GantryClearance, towerTop + .08f);
-            float needed = Mathf.Max(0, headroom - cableHome.y);
+            float headroom = Mathf.Max(head.y, gripPoint.y) + GantryClearance;
+            // The gantry can retract into the canopy as the claw approaches the top.
+            // Extend the glass only when the actual head would meet the roof.
+            float needed = Mathf.Max(supplyRise, headroom - roofCeiling);
             float nextExtension = Mathf.Max(needed, extension - Time.deltaTime * 1.4f);
             if (nextExtension != extension)
             {
@@ -195,7 +243,7 @@ namespace RockBalancing
 
             var depth = Vector3.forward * head.z;
             var offset = depth + Vector3.right * head.x;
-            var rise = Vector3.up * extension;
+            var rise = Vector3.up * Mathf.Max(extension, headroom - cableHome.y);
             bridge.position = bridgeHome + depth + rise;
             trolley.position = trolleyHome + offset + rise;
             cable.position = cableHome + offset + rise;

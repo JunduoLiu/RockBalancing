@@ -59,7 +59,9 @@ namespace RockBalancing
             var lowerPoint = ScreenAnchor(camera, cabinet.LowerButton.position);
             var releasePoint = ScreenAnchor(camera, cabinet.ReleaseButton.position);
             float minSize = 48 / root.GetComponentInParent<Canvas>().scaleFactor;
-            float unitsPerMetre = root.rect.height / (2 * camera.orthographicSize);
+            var keyCenter = cabinet.ReleaseButton.position + Vector3.up * .045f;
+            var keySide = camera.WorldToViewportPoint(keyCenter + camera.transform.right);
+            float unitsPerMetre = root.rect.width * (keySide.x - releasePoint.x);
             float keySize = Mathf.Max(minSize, .20f * unitsPerMetre);
             float stickSize = Mathf.Max(minSize, .24f * unitsPerMetre);
             float releaseSize = Mathf.Max(minSize, .22f * unitsPerMetre);

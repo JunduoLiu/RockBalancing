@@ -50,17 +50,19 @@ namespace RockBalancing
             var sessionObject = new GameObject("Game session");
             sessionObject.transform.SetParent(transform);
             var session = sessionObject.AddComponent<GameSession>();
+            session.TrackArcadeRecord = cabinet != null;
             var input = gameObject.AddComponent<GameInput>();
             input.Session = session; input.ViewCamera = camera; input.Cabinet = cabinet;
-            if (cabinet != null)
-            {
-                input.RotationStepDegrees = ArcadeRotationStepDegrees;
-                cabinet.PlaceCamera(camera);
-            }
+            if (cabinet != null) input.RotationStepDegrees = ArcadeRotationStepDegrees;
             var view = gameObject.AddComponent<GameView>();
             view.Session = session; view.Input = input; view.Typeface = Typeface;
             view.Build();
             session.Initialize(new StoneFactory(StoneMaterial, StoneShapes), pedestal.GetComponent<Collider>(), ground.GetComponent<Collider>());
+            if (cabinet != null)
+            {
+                cabinet.Follow(session);
+                cabinet.PlaceCamera(camera);
+            }
             var guide=gameObject.AddComponent<PlacementGuide>();
             guide.Template=GuideMaterial; guide.Session=session;
             if (cabinet != null) return;

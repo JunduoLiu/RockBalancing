@@ -52,6 +52,136 @@ namespace RockBalancing.Tests
         }
 
         [UnityTest]
+        public IEnumerator FrontPerspectiveAimsAtTheStandardSupplyPoint()
+        {
+            FrameAt(390, 844);
+            yield return null;
+            yield return null;
+            AssertFacing(Vector3.forward);
+            Assert.That(camera.orthographic, Is.False);
+
+            var supplyPoint = Vector3.up * (session.BaseTop + .28f);
+            var center = camera.WorldToViewportPoint(supplyPoint);
+            Assert.That(center.x, Is.EqualTo(.5f).Within(.001f));
+            Assert.That(center.y, Is.EqualTo(.5f).Within(.001f));
+            var near = camera.WorldToViewportPoint(supplyPoint + Vector3.forward * .4f + Vector3.right * .1f);
+            var far = camera.WorldToViewportPoint(supplyPoint + Vector3.back * .4f + Vector3.right * .1f);
+            Assert.That(.5f - near.x, Is.GreaterThan(.5f - far.x));
+        }
+
+        [UnityTest]
+        public IEnumerator TheOriginalWorkingWindowFollowsTheTowerUpAndBackDownAcrossScreenSizes()
+        {
+            FrameAt(900, 430);
+            session.Initialize(new StackableStones(), session.Base, session.Ground);
+            yield return null;
+            yield return null;
+
+            var roof = Part("Roof");
+            var glass = Part("Glass Front");
+            var platform = Part("Cabinet");
+            var cabinet = root.GetComponent<ArcadeCabinet>();
+            var originalPane = glass.bounds;
+            var originalRoof = roof.bounds;
+            var originalPlatform = platform.bounds;
+            var originalBase = session.Base.bounds;
+            var stoneSize = session.Pending.Shape.bounds.size;
+            var farCorner = new Vector3(8, 0, -8);
+            var initialReach = cabinet.LimitTravel(session.Pending, farCorner);
+            float supplyDepth = camera.WorldToViewportPoint(Vector3.up * (session.BaseTop + .28f)).z;
+            var startPosition = camera.transform.position;
+            float landscapeFov = camera.fieldOfView;
+            AssertWorkingWindow(roof.bounds, glass.bounds, originalPane.size.y);
+
+            for (int i = 0; i < 4; i++)
+            {
+                var stone = session.Pending;
+                Assert.That(session.Adjust(stone, Vector3.up * (session.TowerTop() + .12f), Quaternion.identity), Is.True);
+                Assert.That(session.Release(stone), Is.True);
+                yield return new WaitForSeconds(.40f);
+            }
+            yield return new WaitForSeconds(.65f);
+
+            float rise = session.TowerTop() - session.BaseTop;
+            Assert.That(rise, Is.GreaterThan(.7f));
+            Assert.That(camera.transform.position.y - startPosition.y, Is.EqualTo(rise).Within(.01f));
+            Assert.That(camera.fieldOfView, Is.EqualTo(landscapeFov).Within(.001f));
+            Assert.That(camera.WorldToViewportPoint(Vector3.up * (session.TowerTop() + .28f)).z,
+                Is.EqualTo(supplyDepth).Within(.01f));
+            Assert.That(glass.bounds.size.y - originalPane.size.y, Is.EqualTo(rise).Within(.02f));
+            Assert.That(glass.bounds.min.y, Is.EqualTo(originalPane.min.y).Within(.001f));
+            Assert.That(glass.bounds.size.x, Is.EqualTo(originalPane.size.x).Within(.001f));
+            Assert.That(glass.bounds.size.z, Is.EqualTo(originalPane.size.z).Within(.001f));
+            Assert.That(platform.bounds, Is.EqualTo(originalPlatform));
+            Assert.That(session.Base.bounds, Is.EqualTo(originalBase));
+            Assert.That(session.Pending.Shape.bounds.size, Is.EqualTo(stoneSize));
+            AssertWorkingWindow(roof.bounds, glass.bounds, originalPane.size.y);
+
+            FrameAt(390, 844);
+            yield return null;
+            yield return null;
+            var highPosition = camera.transform.position;
+            float portraitFov = camera.fieldOfView;
+            Assert.That(portraitFov, Is.GreaterThan(landscapeFov));
+            Assert.That(cabinet.LimitTravel(session.Pending, farCorner), Is.EqualTo(initialReach));
+            AssertWorkingWindow(roof.bounds, glass.bounds, originalPane.size.y);
+
+            foreach (var stone in session.Stones.Where(stone => stone.Released))
+                stone.Body.position += Vector3.right * 3;
+            for (int frame = 0; frame < 30 && session.TowerTop() >= session.BaseTop + .001f; frame++)
+                yield return new WaitForFixedUpdate();
+            Assert.That(session.TowerTop(), Is.EqualTo(session.BaseTop).Within(.001f));
+            yield return null;
+            Assert.That(camera.transform.position.y, Is.InRange(startPosition.y + .05f, highPosition.y));
+            yield return new WaitForSeconds(1);
+
+            Assert.That(Vector3.Distance(camera.transform.position, startPosition), Is.LessThan(.005f));
+            Assert.That(camera.fieldOfView, Is.EqualTo(portraitFov).Within(.001f));
+            Assert.That(roof.bounds.center.y, Is.EqualTo(originalRoof.center.y).Within(.005f));
+            Assert.That(glass.bounds.size.y, Is.EqualTo(originalPane.size.y).Within(.005f));
+            Assert.That(platform.bounds, Is.EqualTo(originalPlatform));
+            Assert.That(session.Base.bounds, Is.EqualTo(originalBase));
+            Assert.That(cabinet.LimitTravel(session.Pending, farCorner), Is.EqualTo(initialReach));
+            AssertInView(session.Pending.transform.position);
+            AssertWorkingWindow(roof.bounds, glass.bounds, originalPane.size.y);
+        }
+
+        Renderer Part(string name) =>
+            root.GetComponentsInChildren<Renderer>().Single(renderer => renderer.name == name);
+
+        [UnityTest]
+        public IEnumerator ArcadeRecordKeepsTheHighestStableHeightUntilRestart()
+        {
+            session.Initialize(new StackableStones(), session.Base, session.Ground);
+            yield return null;
+            var stone = session.Pending;
+            Assert.That(session.Release(stone), Is.True);
+            yield return new WaitForSeconds(.40f);
+            Assert.That(session.CurrentHeightMm, Is.GreaterThan(180));
+            Assert.That(session.ArcadeHighestStableHeightMm, Is.Zero, "A settling tower is not a record.");
+            yield return new WaitForSeconds(1f);
+
+            int record = session.CurrentHeightMm;
+            Assert.That(session.ArcadeHighestStableHeightMm, Is.EqualTo(record));
+            stone.Body.position += Vector3.right * 3;
+            yield return new WaitForSeconds(.20f);
+            Assert.That(session.CurrentHeightMm, Is.Zero);
+            Assert.That(session.ArcadeHighestStableHeightMm, Is.EqualTo(record));
+
+            session.Restart();
+            Assert.That(session.ArcadeHighestStableHeightMm, Is.Zero);
+        }
+
+        void AssertWorkingWindow(Bounds roof, Bounds pane, float originalHeight)
+        {
+            foreach (float x in new[] { roof.min.x, roof.max.x })
+                foreach (float z in new[] { roof.min.z, roof.max.z })
+                    AssertInView(new Vector3(x, roof.max.y, z));
+            foreach (float x in new[] { pane.min.x, pane.max.x })
+                AssertInView(new Vector3(x, pane.max.y - originalHeight, pane.center.z));
+        }
+
+        [UnityTest]
         public IEnumerator BothScreenEdgesReachAdjacentWindowsAndWrapAroundTheSameStone()
         {
             var stone = session.Pending;
@@ -360,6 +490,7 @@ namespace RockBalancing.Tests
 
         void FrameAt(int width, int height)
         {
+            if (renderTarget != null) Object.Destroy(renderTarget);
             renderTarget = new RenderTexture(width, height, 24);
             camera.targetTexture = renderTarget;
             camera.ResetAspect();
