@@ -413,7 +413,7 @@ namespace RockBalancing
                     if (MovementKeyHeld()) requireNeutral = true;
                 }
                 cabinetTurn = 0;
-                Cabinet.Follow(Session.Pending, Session.TowerTop());
+                Cabinet.Follow(Session);
                 Cabinet.PlaceCamera(ViewCamera);
                 return;
             }
