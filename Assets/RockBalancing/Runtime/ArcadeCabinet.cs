@@ -11,10 +11,10 @@ namespace RockBalancing
         public Transform LiftButton { get; private set; }
         public Transform LowerButton { get; private set; }
         public Transform ReleaseButton { get; private set; }
-        internal Vector3 StickGrip => Joystick.position + new Vector3(0, .159f, -.013f);
+        internal Vector3 StickGrip => Joystick.TransformPoint(Vector3.up * .105f);
         internal bool IsFront => face == 0;
 
-        Transform roof, bridge, trolley, cable, claw;
+        Transform console, roof, bridge, trolley, cable, claw;
         readonly Transform[] window = new Transform[5];
         readonly Vector3[] windowScales = new Vector3[5];
         readonly Transform[] jaws = new Transform[3];
@@ -22,7 +22,7 @@ namespace RockBalancing
         readonly Vector3[] jawAxes = new Vector3[3];
         Quaternion neutralStick;
         Vector3 roofHome, bridgeHome, trolleyHome, cableHome, clawHome, cableScale;
-        Vector3 liftHome, lowerHome, releaseHome;
+        Vector3 consoleHome, liftHome, lowerHome, releaseHome;
         const float WindowHeight = 1.159f;
         const float GantryClearance = .03f;
         const float OpenSeconds = .10f;
@@ -38,10 +38,12 @@ namespace RockBalancing
         {
             var body = Instantiate(model, transform).transform;
             body.name = model.name;
-            Joystick = body.Find("Joystick");
-            LiftButton = body.Find("Button Lift");
-            LowerButton = body.Find("Button Lower");
-            ReleaseButton = body.Find("Button Release");
+            console = body.Find("Console");
+            consoleHome = console.localPosition;
+            Joystick = console.Find("Joystick");
+            LiftButton = console.Find("Button Lift");
+            LowerButton = console.Find("Button Lower");
+            ReleaseButton = console.Find("Button Release");
             roof = body.Find("Roof");
             bridge = body.Find("Bridge");
             trolley = body.Find("Trolley");
@@ -55,9 +57,9 @@ namespace RockBalancing
             }
 
             neutralStick = Joystick.localRotation;
-            liftHome = LiftButton.position;
-            lowerHome = LowerButton.position;
-            releaseHome = ReleaseButton.position;
+            liftHome = LiftButton.localPosition;
+            lowerHome = LowerButton.localPosition;
+            releaseHome = ReleaseButton.localPosition;
             roofHome = roof.position;
             bridgeHome = bridge.position;
             trolleyHome = trolley.position;
@@ -84,6 +86,7 @@ namespace RockBalancing
             float renderAspect = target != null
                 ? (float)target.width / target.height
                 : (float)Screen.width / Mathf.Max(1, Screen.height);
+            PlaceConsole(renderAspect, extension);
             var aroundCabinet = Quaternion.Euler(0, -face * 90, 0);
             camera.orthographic = true;
             if (face % 2 != 0)
@@ -102,6 +105,13 @@ namespace RockBalancing
             camera.transform.SetPositionAndRotation(
                 focus + aroundCabinet * offset,
                 aroundCabinet * Quaternion.Euler(IsFront ? 14.93f : 9f, 180, 0));
+        }
+
+        void PlaceConsole(float aspect, float framingRise)
+        {
+            // A taller portrait window leaves space beneath the glass for the deck.
+            float portrait = Mathf.InverseLerp(1f, .45f, aspect);
+            console.localPosition = consoleHome + Vector3.up * (framingRise - .24f * portrait);
         }
 
         void PlaceSideCamera(Camera camera, Quaternion aroundCabinet, float renderAspect)
@@ -210,10 +220,10 @@ namespace RockBalancing
         public void ShowControls(Vector2 stick, bool raising, bool lowering, bool releasePressed)
         {
             Joystick.localRotation = neutralStick * Quaternion.Euler(-stick.y * 11, 0, stick.x * 11);
-            LiftButton.position = liftHome + Vector3.down * (raising ? .012f : 0);
-            LowerButton.position = lowerHome + Vector3.down * (lowering ? .012f : 0);
+            LiftButton.localPosition = liftHome + Vector3.down * (raising ? .012f : 0);
+            LowerButton.localPosition = lowerHome + Vector3.down * (lowering ? .012f : 0);
             bool releasePulse = releasing && releaseElapsed < OpenSeconds;
-            ReleaseButton.position = releaseHome + Vector3.down * (releasePressed || releasePulse ? .012f : 0);
+            ReleaseButton.localPosition = releaseHome + Vector3.down * (releasePressed || releasePulse ? .012f : 0);
         }
     }
 }
