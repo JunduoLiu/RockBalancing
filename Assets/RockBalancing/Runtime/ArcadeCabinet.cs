@@ -12,7 +12,6 @@ namespace RockBalancing
         public Transform LowerButton { get; private set; }
         public Transform ReleaseButton { get; private set; }
         internal Vector3 StickGrip => Joystick.TransformPoint(Vector3.up * .105f);
-        internal bool IsFront => face == 0;
 
         Transform console, roof, bridge, trolley, cable, claw;
         readonly Transform[] window = new Transform[5];
@@ -26,7 +25,6 @@ namespace RockBalancing
         const float WindowHeight = 1.159f;
         const float GantryClearance = .03f;
         const float CameraDistance = 4.97f;
-        const float FrontPitch = 15f;
         const float SupplyFollowSeconds = .18f;
         const float MinimumLift = .70f;
         const float LiftAllowance = .34f;
@@ -39,7 +37,6 @@ namespace RockBalancing
         Vector3 cameraFocus;
         bool releasing;
         Stone suppliedStone;
-        int face;
 
         public void Initialize(GameObject model)
         {
@@ -86,30 +83,10 @@ namespace RockBalancing
             }
         }
 
-        public void PlaceCamera(Camera camera)
+        public void PlaceCamera(Camera camera, float azimuth = 0)
         {
-            if (IsFront)
-            {
-                PlacePerspectiveCamera(camera, 0, FrontPitch);
-                return;
-            }
-
-            var aroundCabinet = Quaternion.Euler(0, -face * 90, 0);
-            float renderAspect = RenderAspect(camera);
-            PlaceConsole(renderAspect, supplyRise);
-            camera.orthographic = true;
-            if (face % 2 != 0)
-            {
-                PlaceSideCamera(camera, aroundCabinet, renderAspect);
-                return;
-            }
-
-            camera.rect = new Rect(0, 0, 1, 1);
-            camera.aspect = renderAspect;
-            var focus = Vector3.up * (.43f + extension * .5f);
-            var offset = new Vector3(0, .76f, 4.8f);
-            camera.orthographicSize = Mathf.Max(1.25f, .86f / renderAspect) + extension * .53f;
-            camera.transform.SetPositionAndRotation(focus + aroundCabinet * offset, aroundCabinet * Quaternion.Euler(9, 180, 0));
+            float pitch = 12f + 3f * Mathf.Cos(azimuth * Mathf.Deg2Rad);
+            PlacePerspectiveCamera(camera, azimuth, pitch);
         }
 
         internal void PlacePerspectiveCamera(Camera camera, float azimuth, float pitch)
@@ -129,8 +106,6 @@ namespace RockBalancing
 
         static float RenderAspect(Camera camera)
         {
-            // Use the full render surface every frame. The camera's automatic aspect
-            // can already reflect the cropped side viewport from the previous frame.
             var target = camera.targetTexture;
             return target != null
                 ? (float)target.width / target.height
@@ -144,28 +119,8 @@ namespace RockBalancing
             console.localPosition = consoleHome + Vector3.up * (framingRise - .24f * portrait);
         }
 
-        void PlaceSideCamera(Camera camera, Quaternion aroundCabinet, float renderAspect)
+        internal void ResetClaw()
         {
-            const float windowHalfWidth = .62f;
-            const float minimumHalfHeight = .76f;
-            var outside = aroundCabinet * Vector3.forward;
-            var halfHeight = windowHalfWidth / renderAspect;
-            // Keep a level view through the pane. On wide screens use a narrower
-            // viewport so the console stays outside the frame below the pane.
-            float height = Mathf.Clamp(1.4f - halfHeight, .43f, .62f);
-            var focus = new Vector3(0, height + extension * .5f, -.02f);
-            camera.orthographicSize = Mathf.Max(halfHeight, minimumHalfHeight) + extension * .5f;
-            float width = Mathf.Min(1, windowHalfWidth / (camera.orthographicSize * renderAspect));
-            camera.rect = new Rect((1 - width) * .5f, 0, width, 1);
-            camera.aspect = renderAspect * width;
-            camera.transform.SetPositionAndRotation(focus + outside * 4.8f, aroundCabinet * FrontHeading);
-        }
-
-        internal void Turn(int direction) => face = (face + direction + 4) % 4;
-
-        internal void ResetFace()
-        {
-            face = 0;
             releasing = false;
             suppliedStone = null;
         }
