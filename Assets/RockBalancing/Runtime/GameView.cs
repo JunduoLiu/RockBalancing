@@ -23,6 +23,8 @@ namespace RockBalancing
         GameObject controls, confirmation;
         RectTransform actionBar;
         ArcadeConsole arcadeConsole;
+        ArcadeSettings arcadeSettings;
+        ArcadeRotationRing[] rotationRings;
         readonly Color ink = new Color(.16f, .22f, .23f);
         readonly Color paper = new Color(.96f, .95f, .91f, .96f);
 
@@ -60,6 +62,9 @@ namespace RockBalancing
                 controls = deck.gameObject;
                 arcadeConsole = new ArcadeConsole(this, deck, Input.Cabinet);
                 ReleaseButton = arcadeConsole.ReleaseButton;
+                rotationRings = new ArcadeRotationRing[ArcadeRotationRing.Axes.Length];
+                for (int i = 0; i < rotationRings.Length; i++)
+                    rotationRings[i] = ArcadeRotationRing.Create(this, i);
             }
             var retry = ButtonAt(Root, "等待下一颗 · 点击重试", new Vector2(.22f,.07f), new Vector2(.78f,.13f), () => { _ = Session.RequestNextAsync(); });
             retry.gameObject.name = "Retry";
@@ -72,6 +77,7 @@ namespace RockBalancing
             ButtonAt(dialog, "重新开始", new Vector2(.52f,.1f), new Vector2(.95f,.35f), () => { Session.Restart(); ShowRestart(false); });
             confirmation.SetActive(false);
             if (arcadeConsole == null) pendingEdge=EdgeLabel("Pending direction");
+            else arcadeSettings = new ArcadeSettings(this, bar, paper, ink);
         }
         void BuildOriginalControls()
         {
@@ -143,6 +149,12 @@ namespace RockBalancing
             if (controls == null || Session == null) return;
             UpdateActionLayout();
             RestartButton.interactable = !Input.Modal && !Session.ShareBusy;
+            if (arcadeSettings != null)
+            {
+                arcadeSettings.MenuButton.interactable = !Input.Modal;
+                var target = Input.StepRotationTarget;
+                foreach (var ring in rotationRings) ring.Show(target, Input.Cabinet, Input.ViewCamera);
+            }
             controls.SetActive(!Session.Waiting);
             retryButton.gameObject.SetActive(Session.Waiting);
             ReleaseButton.interactable = Input.CanAct;
@@ -174,7 +186,7 @@ namespace RockBalancing
             // percentage-only header made Share less than 44 px wide on a phone.
             float scale = Mathf.Max(.01f, Root.GetComponent<Canvas>().scaleFactor);
             float size = Mathf.Max(48, 48 / scale), gap = Mathf.Max(8, 8 / scale);
-            float actionWidth = arcadeConsole == null ? size * 2 + gap : size;
+            float actionWidth = size * 2 + gap;
             actionBar.sizeDelta = new Vector2(actionWidth, size);
             var restart = (RectTransform)RestartButton.transform;
             var share = (RectTransform)ShareButton.transform;
@@ -182,6 +194,7 @@ namespace RockBalancing
             restart.sizeDelta = share.sizeDelta = Vector2.one * size;
             restart.anchoredPosition = Vector2.zero;
             share.anchoredPosition = new Vector2(size + gap, 0);
+            arcadeSettings?.Layout(size, gap, scale);
             HeightLabel.rectTransform.anchorMax = new Vector2(
                 Mathf.Min(.63f, .94f - (actionWidth + gap) / Root.rect.width), .98f);
             if (arcadeConsole != null) return;

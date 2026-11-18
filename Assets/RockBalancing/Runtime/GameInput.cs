@@ -11,6 +11,17 @@ namespace RockBalancing
         public GameSession Session;
         public Camera ViewCamera;
         public ArcadeCabinet Cabinet;
+        public float RotationStepDegrees { get; set; }
+        internal bool StepRotationEnabled { get; private set; }
+        internal Stone StepRotationTarget => StepRotationEnabled && active && rotating && CanAdjust ? selected : null;
+        readonly Vector2[] stepTangents = new Vector2[ArcadeRotationRing.Axes.Length];
+        bool stepUsed;
+        internal void SetStepRotation(bool enabled)
+        {
+            if (Cabinet == null || StepRotationEnabled == enabled) return;
+            CancelGesture();
+            StepRotationEnabled = enabled;
+        }
         public bool IsOperating => Adjusting || (active && rotating) || keyboardHeld;
         public ObservationOcclusion Occlusion { get; private set; }
         bool modal;
@@ -141,10 +152,14 @@ namespace RockBalancing
             {
                 // A second finger does not turn a press on the stone into a pinch.
                 foreach (var finger in touch.touches)
-                    if (finger.touchId.ReadValue() == touchId && finger.press.isPressed)
+                    if (finger.touchId.ReadValue() == touchId)
                     {
-                        Move(finger.position.ReadValue());
-                        return;
+                        if (finger.press.isPressed) { Move(finger.position.ReadValue()); return; }
+                        if (finger.phase.ReadValue() == UnityEngine.InputSystem.TouchPhase.Ended)
+                        {
+                            End(finger.position.ReadValue());
+                            return;
+                        }
                     }
                 CancelGesture();
                 return;
@@ -223,6 +238,7 @@ namespace RockBalancing
         {
             start = previous = position;
             dragged = false;
+            stepUsed = false;
             blocked = IsUI(position);
             active = !blocked;
             selected = Session.Pending;
@@ -235,6 +251,10 @@ namespace RockBalancing
                 if (stone != null && stone != selected) blocked = true;
             }
             if (Cabinet != null && !rotating) active = false;
+            if (StepRotationTarget != null)
+                for (int i = 0; i < stepTangents.Length; i++)
+                    stepTangents[i] = ArcadeRotationRing.PositiveTangent(i, Cabinet, ViewCamera,
+                        selected.transform.position, position);
         }
         bool ObservationHit(Ray ray, out RaycastHit nearest)
         {
@@ -265,6 +285,11 @@ namespace RockBalancing
             if (!dragged) return;
             if (rotating && selected != null)
             {
+                if (StepRotationEnabled)
+                {
+                    if (!stepUsed && CanAdjust) RotateOneStep(p - start);
+                    return;
+                }
                 var rotation = Quaternion.AngleAxis(-delta.x * RotationSensitivity, ViewCamera.transform.up) *
                                Quaternion.AngleAxis(delta.y * RotationSensitivity, ViewCamera.transform.right) * selected.transform.rotation;
                 Session.Adjust(selected, selected.transform.position, rotation);
@@ -275,10 +300,30 @@ namespace RockBalancing
                 pitch = Mathf.Clamp(pitch - delta.y * OrbitSensitivity, Mathf.Clamp(MinimumPitch,-90,90), Mathf.Clamp(MaximumPitch,Mathf.Clamp(MinimumPitch,-90,90),90));
             }
         }
+        void RotateOneStep(Vector2 drag)
+        {
+            stepUsed = true;
+            var direction = drag.normalized;
+            int choice = 0;
+            float alignment = Vector2.Dot(direction, stepTangents[choice]);
+            for (int i = 1; i < stepTangents.Length; i++)
+            {
+                float candidate = Vector2.Dot(direction, stepTangents[i]);
+                // A nearly exact tie keeps the earlier, stable cabinet axis.
+                if (Mathf.Abs(candidate) <= Mathf.Abs(alignment) + .001f) continue;
+                choice = i;
+                alignment = candidate;
+            }
+            var axis = Cabinet.transform.TransformDirection(ArcadeRotationRing.Axes[choice].Axis);
+            float step = Mathf.Clamp(RotationStepDegrees, 1, 179);
+            var rotation = Quaternion.AngleAxis(Mathf.Sign(alignment) * step, axis) * selected.transform.rotation;
+            Session.AdjustRotationStep(selected, rotation);
+        }
+
         void End(Vector2 p)
         {
-            active = false;
-            selected = null;
+            if (StepRotationTarget != null) Move(p);
+            CancelGesture();
         }
         public void HoldPlanar(bool held)
         {

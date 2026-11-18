@@ -8,6 +8,7 @@ namespace RockBalancing
         public Material StoneMaterial;
         public Material GuideMaterial;
         public GameObject CabinetModel;
+        [Range(1, 179)] public float ArcadeRotationStepDegrees = 15;
         public StoneShapeSettings StoneShapes = new StoneShapeSettings();
         readonly System.Collections.Generic.List<Material> materials=new System.Collections.Generic.List<Material>();
         void Start()
@@ -51,7 +52,11 @@ namespace RockBalancing
             var session = sessionObject.AddComponent<GameSession>();
             var input = gameObject.AddComponent<GameInput>();
             input.Session = session; input.ViewCamera = camera; input.Cabinet = cabinet;
-            if (cabinet != null) cabinet.PlaceCamera(camera);
+            if (cabinet != null)
+            {
+                input.RotationStepDegrees = ArcadeRotationStepDegrees;
+                cabinet.PlaceCamera(camera);
+            }
             var view = gameObject.AddComponent<GameView>();
             view.Session = session; view.Input = input; view.Typeface = Typeface;
             view.Build();
