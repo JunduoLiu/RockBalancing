@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
   <meta name="theme-color" content="#dce4dc">
-  <title>{{{ PRODUCT_NAME === 'STRATA' ? 'STRATA · 叠石街机' : '叠石 · Rock Balance' }}}</title>
+  <title>{{{ GAME_VARIANT === 'arcade' ? 'STRATA · 叠石街机' : '叠石 · Rock Balance' }}}</title>
   <style>
     * { box-sizing:border-box } html,body { margin:0;width:100%;height:100%;overflow:hidden;background:#dce4dc;color:#293b3b;font-family:system-ui,sans-serif }
     #game { position:fixed;inset:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);touch-action:none }
@@ -19,9 +19,9 @@
   </style>
 </head>
 <body>
-  <main id="game"><canvas id="unity-canvas" tabindex="0" aria-label="{{{ PRODUCT_NAME === 'STRATA' ? 'STRATA 叠石街机' : '叠石游戏' }}}"></canvas></main>
-  <section id="loading"><h1>{{{ PRODUCT_NAME === 'STRATA' ? 'STRATA' : '叠 石' }}}</h1>
-#if PRODUCT_NAME != "STRATA"
+  <main id="game"><canvas id="unity-canvas" tabindex="0" aria-label="{{{ GAME_VARIANT === 'arcade' ? 'STRATA 叠石街机' : '叠石游戏' }}}"></canvas></main>
+  <section id="loading"><h1>{{{ GAME_VARIANT === 'arcade' ? 'STRATA' : '叠 石' }}}</h1>
+#if GAME_VARIANT !== "arcade"
     <span>一点耐心，一点重力。</span>
 #endif
     <progress id="load-progress" max="1" value="0"></progress><p id="load-message">正在准备石头…</p></section>

@@ -15,7 +15,7 @@ namespace RockBalancing
         public float RotationStepDegrees { get; set; }
         internal bool StepRotationEnabled { get; private set; }
         internal Stone StepRotationTarget => StepRotationEnabled && active && rotating && CanAdjust ? selected : null;
-        readonly Vector2[] stepTangents = new Vector2[ArcadeRotationRing.Axes.Length];
+        readonly Vector2[] stepTangents = new Vector2[ArcadeRotationGeometry.AxisCount];
         bool stepUsed;
         internal void SetStepRotation(bool enabled)
         {
@@ -103,22 +103,30 @@ namespace RockBalancing
         public void CancelGesture() { active = false; selected = null; touchId = -1; pinch = 0; }
         public void CancelForFocusLoss(string unused="")
         {
+            CancelStoneOperations();
+            cabinetTurn = 0;
+            foreach (var button in GetComponentsInChildren<ArcadeFaceButton>(true)) button.Cancel();
+        }
+        void CancelStoneOperations()
+        {
             CancelGesture();requireNeutral=true;
             keyboardPlanar=Vector2.zero;keyboardLift=0;keyboardHeld=false;
             planar=Vector2.zero;lift=0;planarStone=null;liftStone=null;Adjusting=false;
             foreach(var pad in GetComponentsInChildren<DragPad>(true))pad.Cancel();
             foreach(var button in GetComponentsInChildren<StoneActionButton>(true))button.Cancel();
         }
-        void CancelForStoneChange() => CancelForFocusLoss();
+        void CancelForStoneChange() => CancelStoneOperations();
         public bool CanAdjust => !Modal && !focusLost && !paused && browserFocused && !requireNeutral &&
             Session != null && Session.Pending != null && (Cabinet == null || Cabinet.IsFront);
         public bool CanAct => CanAdjust && Time.unscaledTimeAsDouble >= nextActionTime;
         public bool ActOnStone(Stone expected, bool discard)
         {
             if (!CanAct || expected == null || expected != Session.Pending) return false;
-            CancelForFocusLoss();
+            CancelStoneOperations();
             nextActionTime = Time.unscaledTimeAsDouble + ActionRepeatDelay;
-            return discard ? Session.Discard(expected) : Session.Release(expected);
+            bool released = discard ? Session.Discard(expected) : Session.Release(expected);
+            if (released && !discard) Cabinet?.AnimateRelease();
+            return released;
         }
 
         void Update()
@@ -139,7 +147,7 @@ namespace RockBalancing
                 foreach (var t in touch.touches)
                 {
                     int id = t.touchId.ReadValue();
-                    if (controlTouches.ContainsKey(id) && t.phase.ReadValue() == UnityEngine.InputSystem.TouchPhase.Canceled) canceled = true;
+                    if (controlTouches.ContainsKey(id) && PointerCancellation.IsCanceled(t)) canceled = true;
                     if (!t.press.isPressed) continue;
                     total++; liveTouches.Add(id);
                     if (!controlTouches.TryGetValue(id, out bool control))
@@ -200,7 +208,6 @@ namespace RockBalancing
                 var end=previous;
                 if(touch!=null)foreach(var t in touch.touches)if(t.touchId.ReadValue()==touchId)
                 {
-                    if(t.phase.ReadValue()==UnityEngine.InputSystem.TouchPhase.Canceled){CancelGesture();return;}
                     end=t.position.ReadValue();break;
                 }
                 End(end);touchId=-1;return;
@@ -262,9 +269,7 @@ namespace RockBalancing
             }
             if (Cabinet != null && !rotating) active = false;
             if (StepRotationTarget != null)
-                for (int i = 0; i < stepTangents.Length; i++)
-                    stepTangents[i] = ArcadeRotationRing.PositiveTangent(i, Cabinet, ViewCamera,
-                        selected.transform.position, position);
+                ArcadeRotationGeometry.GetTangents(Cabinet.transform, ViewCamera, selected.transform.position, position, stepTangents);
         }
         bool ObservationHit(Ray ray, out RaycastHit nearest)
         {
@@ -313,20 +318,9 @@ namespace RockBalancing
         void RotateOneStep(Vector2 drag)
         {
             stepUsed = true;
-            var direction = drag.normalized;
-            int choice = 0;
-            float alignment = Vector2.Dot(direction, stepTangents[choice]);
-            for (int i = 1; i < stepTangents.Length; i++)
-            {
-                float candidate = Vector2.Dot(direction, stepTangents[i]);
-                // A nearly exact tie keeps the earlier, stable cabinet axis.
-                if (Mathf.Abs(candidate) <= Mathf.Abs(alignment) + .001f) continue;
-                choice = i;
-                alignment = candidate;
-            }
-            var axis = Cabinet.transform.TransformDirection(ArcadeRotationRing.Axes[choice].Axis);
+            var axis = ArcadeRotationGeometry.GetSignedAxis(Cabinet.transform, drag, stepTangents);
             float step = Mathf.Clamp(RotationStepDegrees, 1, 179);
-            var rotation = Quaternion.AngleAxis(Mathf.Sign(alignment) * step, axis) * selected.transform.rotation;
+            var rotation = Quaternion.AngleAxis(step, axis) * selected.transform.rotation;
             Session.AdjustRotationStep(selected, rotation);
         }
 
@@ -375,7 +369,7 @@ namespace RockBalancing
         {
             var origin = stone.transform.position;
             var destination = origin + delta;
-            if (Cabinet != null) destination = Cabinet.LimitTravel(origin, destination);
+            if (Cabinet != null) destination = Cabinet.LimitTravel(stone, destination);
             Session.Adjust(stone, destination, stone.transform.rotation);
         }
         void LateUpdate()
@@ -392,8 +386,8 @@ namespace RockBalancing
                     if (MovementKeyHeld()) requireNeutral = true;
                 }
                 cabinetTurn = 0;
+                Cabinet.Follow(Session.Pending, Session.TowerTop());
                 Cabinet.PlaceCamera(ViewCamera);
-                Cabinet.Follow(Session.Pending);
                 return;
             }
             // A scene gesture owns the observation centre until all its fingers end.

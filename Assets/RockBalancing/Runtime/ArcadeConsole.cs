@@ -20,6 +20,7 @@ namespace RockBalancing
             input = view.Input;
             stick = Target(view, "Move");
             var pad = stick.gameObject.AddComponent<DragPad>();
+            pad.RelativeToPress = true;
             pad.CanBegin = () => input.CanAdjust;
             pad.Held = input.HoldPlanar;
             pad.Changed = value => { stickOffset = value; input.MoveStone(value); };
@@ -53,32 +54,37 @@ namespace RockBalancing
         public void Layout()
         {
             var camera = input.ViewCamera;
+            var stickPoint = camera.WorldToViewportPoint(cabinet.StickGrip);
             var liftPoint = ScreenAnchor(camera, cabinet.LiftButton.position);
             var lowerPoint = ScreenAnchor(camera, cabinet.LowerButton.position);
-            float keySpacing = Mathf.Abs(liftPoint.x - lowerPoint.x) * root.rect.width;
+            var releasePoint = ScreenAnchor(camera, cabinet.ReleaseButton.position);
             float minSize = 48 / root.GetComponentInParent<Canvas>().scaleFactor;
             float unitsPerMetre = root.rect.height / (2 * camera.orthographicSize);
-            // The two height keys sit close together. Keep their hit areas separate
-            // even on a narrow phone while extending them above and below the deck.
-            float keyHeight = Mathf.Max(minSize, .20f * unitsPerMetre);
-            float keyWidth = Mathf.Min(keySpacing, keyHeight);
+            float keySize = Mathf.Max(minSize, .20f * unitsPerMetre);
             float stickSize = Mathf.Max(minSize, .24f * unitsPerMetre);
             float releaseSize = Mathf.Max(minSize, .22f * unitsPerMetre);
-            Place(stick, camera.WorldToViewportPoint(cabinet.Joystick.position + Vector3.up * .13f),
-                new Vector2(stickSize, stickSize));
-            Place(lift, liftPoint, new Vector2(keyWidth, keyHeight));
-            Place(lower, lowerPoint, new Vector2(keyWidth, keyHeight));
-            Place(release, ScreenAnchor(camera, cabinet.ReleaseButton.position), new Vector2(releaseSize, releaseSize));
-            cabinet.ShowControls(stickOffset, raising, lowering);
+            // Build neighboring hit areas around the actual controls. Height buttons
+            // can grow away from their shared edge when the pair is close on screen.
+            float releaseEdge = (releasePoint.x + lowerPoint.x) * .5f;
+            float heightEdge = (lowerPoint.x + liftPoint.x) * .5f;
+            float stickEdge = (liftPoint.x + stickPoint.x) * .5f;
+            Place(release, releasePoint, releaseSize, 0, releaseEdge);
+            Place(lower, lowerPoint, keySize, releaseEdge, heightEdge);
+            Place(lift, liftPoint, keySize, heightEdge, stickEdge);
+            Place(stick, stickPoint, stickSize, stickEdge, 1);
         }
+
+        public void ShowControls() => cabinet.ShowControls(stickOffset, raising, lowering, ReleaseButton.IsPressed);
 
         static Vector2 ScreenAnchor(Camera camera, Vector3 key) =>
             camera.WorldToViewportPoint(key + Vector3.up * .045f);
 
-        static void Place(RectTransform rect, Vector2 anchor, Vector2 size)
+        void Place(RectTransform rect, Vector2 anchor, float size, float left, float right)
         {
+            float width = Mathf.Min(size / root.rect.width, right - left);
+            anchor.x = Mathf.Clamp(anchor.x, left + width * .5f, right - width * .5f);
             rect.anchorMin = rect.anchorMax = anchor;
-            rect.sizeDelta = size;
+            rect.sizeDelta = new Vector2(width * root.rect.width, size);
             rect.anchoredPosition = Vector2.zero;
         }
     }

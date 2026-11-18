@@ -11,6 +11,7 @@ namespace RockBalancing.Editor
         public const string ScenePath = "Assets/RockBalancing/Scenes/Balance.unity";
         public const string ArcadeScenePath = "Assets/RockBalancing/Scenes/Arcade.unity";
         const string WebOutput = "Builds/Web";
+        const string WebVariantVariable = "GAME_VARIANT";
         [MenuItem("Rock Balancing/Create playable scene")]
         public static void CreateScene()
         {
@@ -30,19 +31,9 @@ namespace RockBalancing.Editor
                 : new[] { new EditorBuildSettingsScene(ScenePath, true) };
             AssetDatabase.SaveAssets();
         }
-        public static void BuildWeb() => BuildWebVariant(ScenePath, WebOutput, "Rock Balance");
-        public static void BuildArcadeWeb()
-        {
-            var productName = PlayerSettings.productName;
-            try
-            {
-                BuildWebVariant(ArcadeScenePath, Path.Combine(WebOutput, "arcade"), "STRATA");
-            }
-            finally
-            {
-                PlayerSettings.productName = productName;
-            }
-        }
+        public static void BuildWeb() => BuildWebVariant(ScenePath, WebOutput, "original", "Rock Balance");
+        public static void BuildArcadeWeb() =>
+            BuildWebVariant(ArcadeScenePath, Path.Combine(WebOutput, "arcade"), "arcade", "STRATA");
 
         public static void BuildWebVariants()
         {
@@ -50,25 +41,46 @@ namespace RockBalancing.Editor
             BuildArcadeWeb();
         }
 
-        static void BuildWebVariant(string scenePath, string output, string productName)
+        static void BuildWebVariant(string scenePath, string output, string variant, string productName)
         {
             if(!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL,BuildTarget.WebGL))
                 throw new System.InvalidOperationException("Install Web Build Support for this Unity version, then restart the Editor.");
-            PlayerSettings.companyName = "RockBalancing";
-            PlayerSettings.productName = productName;
-            PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
-            PlayerSettings.WebGL.decompressionFallback = true;
-            PlayerSettings.WebGL.dataCaching = false;
-            PlayerSettings.WebGL.template = "PROJECT:RockBalance";
-            PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
-            PlayerSettings.defaultWebScreenWidth = 430;
-            PlayerSettings.defaultWebScreenHeight = 900;
-            var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions {
-                scenes = new[] { scenePath }, locationPathName = output, target = BuildTarget.WebGL,
-                options = BuildOptions.None
-            });
-            if (report.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
-                throw new System.Exception("Web build failed: " + report.summary.result);
+            var previous = (PlayerSettings.companyName, PlayerSettings.productName, PlayerSettings.WebGL.compressionFormat,
+                PlayerSettings.WebGL.decompressionFallback, PlayerSettings.WebGL.dataCaching, PlayerSettings.WebGL.template,
+                PlayerSettings.WebGL.exceptionSupport, PlayerSettings.defaultWebScreenWidth, PlayerSettings.defaultWebScreenHeight,
+                variant: PlayerSettings.GetTemplateCustomValue(WebVariantVariable));
+            try
+            {
+                PlayerSettings.companyName = "RockBalancing";
+                PlayerSettings.productName = productName;
+                PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
+                PlayerSettings.WebGL.decompressionFallback = true;
+                PlayerSettings.WebGL.dataCaching = false;
+                PlayerSettings.WebGL.template = "PROJECT:RockBalance";
+                PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
+                PlayerSettings.defaultWebScreenWidth = 430;
+                PlayerSettings.defaultWebScreenHeight = 900;
+                PlayerSettings.SetTemplateCustomValue(WebVariantVariable, variant);
+                var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions {
+                    scenes = new[] { scenePath }, locationPathName = output, target = BuildTarget.WebGL,
+                    options = BuildOptions.None
+                });
+                if (report.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
+                    throw new System.Exception("Web build failed: " + report.summary.result);
+            }
+            finally
+            {
+                PlayerSettings.SetTemplateCustomValue(WebVariantVariable, previous.variant);
+                PlayerSettings.companyName = previous.companyName;
+                PlayerSettings.productName = previous.productName;
+                PlayerSettings.WebGL.compressionFormat = previous.compressionFormat;
+                PlayerSettings.WebGL.decompressionFallback = previous.decompressionFallback;
+                PlayerSettings.WebGL.dataCaching = previous.dataCaching;
+                PlayerSettings.WebGL.template = previous.template;
+                PlayerSettings.WebGL.exceptionSupport = previous.exceptionSupport;
+                PlayerSettings.defaultWebScreenWidth = previous.defaultWebScreenWidth;
+                PlayerSettings.defaultWebScreenHeight = previous.defaultWebScreenHeight;
+            }
             // A module installed while the Editor is open can report success even
             // when its postprocessor did not load and no browser files were written.
             if(!File.Exists(Path.Combine(output,"index.html")) || !Directory.Exists(Path.Combine(output,"Build")) ||

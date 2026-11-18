@@ -26,6 +26,7 @@ namespace RockBalancing
         ArcadeSettings arcadeSettings;
         ArcadeRotationRing[] rotationRings;
         ArcadeFaceButton previousFace, nextFace;
+        RectTransform leftWindowMargin, rightWindowMargin;
         readonly Color ink = new Color(.16f, .22f, .23f);
         readonly Color paper = new Color(.96f, .95f, .91f, .96f);
 
@@ -59,15 +60,23 @@ namespace RockBalancing
                 BuildOriginalControls();
             else
             {
+                var background = Input.ViewCamera.backgroundColor;
+                leftWindowMargin = Panel(Root, "Left window margin", Vector2.zero, Vector2.up, background, false);
+                rightWindowMargin = Panel(Root, "Right window margin", Vector2.right, Vector2.one, background, false);
+                leftWindowMargin.SetAsFirstSibling();
+                rightWindowMargin.SetAsFirstSibling();
                 previousFace = BuildFaceButton("Previous cabinet face", -1);
                 nextFace = BuildFaceButton("Next cabinet face", 1);
                 var deck = Panel(Root, "Cabinet controls", Vector2.zero, Vector2.one, Color.clear, false);
                 controls = deck.gameObject;
                 arcadeConsole = new ArcadeConsole(this, deck, Input.Cabinet);
                 ReleaseButton = arcadeConsole.ReleaseButton;
-                rotationRings = new ArcadeRotationRing[ArcadeRotationRing.Axes.Length];
-                for (int i = 0; i < rotationRings.Length; i++)
-                    rotationRings[i] = ArcadeRotationRing.Create(this, i);
+                rotationRings = new[]
+                {
+                    ArcadeRotationRing.Create(this, ArcadeAxis.X),
+                    ArcadeRotationRing.Create(this, ArcadeAxis.Y),
+                    ArcadeRotationRing.Create(this, ArcadeAxis.Z)
+                };
             }
             var retry = ButtonAt(Root, "等待下一颗 · 点击重试", new Vector2(.22f,.07f), new Vector2(.78f,.13f), () => { _ = Session.RequestNextAsync(); });
             retry.gameObject.name = "Retry";
@@ -154,6 +163,11 @@ namespace RockBalancing
             RestartButton.interactable = !Input.Modal && !Session.ShareBusy;
             if (arcadeSettings != null)
             {
+                var viewport = Input.ViewCamera.rect;
+                leftWindowMargin.gameObject.SetActive(viewport.xMin > 0);
+                rightWindowMargin.gameObject.SetActive(viewport.xMax < 1);
+                leftWindowMargin.anchorMax = new Vector2(viewport.xMin, 1);
+                rightWindowMargin.anchorMin = new Vector2(viewport.xMax, 0);
                 arcadeSettings.MenuButton.interactable = !Input.Modal;
                 var target = Input.StepRotationTarget;
                 foreach (var ring in rotationRings) ring.Show(target, Input.Cabinet, Input.ViewCamera);
@@ -165,6 +179,7 @@ namespace RockBalancing
             previousFace?.Layout();
             nextFace?.Layout();
             if (controls.activeSelf) arcadeConsole?.Layout();
+            arcadeConsole?.ShowControls();
             HeightLabel.text = Session.Stabilizing ? "stablizing" : Session.CurrentHeightMm + " mm";
             HeightLabel.fontSize = HeightLabel.resizeTextMaxSize = Session.Stabilizing ? 28 : 44;
             ShareButton.interactable = Session.CanShare && !Input.Modal;

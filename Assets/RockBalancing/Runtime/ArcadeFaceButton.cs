@@ -1,7 +1,5 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
-using UnityEngine.InputSystem;
-using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 namespace RockBalancing
@@ -60,11 +58,15 @@ namespace RockBalancing
         {
             if (eventData.button != PointerEventData.InputButton.Left || pointer != eventData.pointerId) return;
             pointer = int.MinValue;
-            if (eventData is ExtendedPointerEventData touchEvent && touchEvent.device is Touchscreen screen)
-                foreach (var touch in screen.touches)
-                    if (touch.touchId.ReadValue() == touchEvent.touchId && touch.phase.ReadValue() == UnityEngine.InputSystem.TouchPhase.Canceled)
-                        return;
-            if (IsInteractable()) view.Input.RequestCabinetTurn(direction);
+            if (!PointerCancellation.IsCanceled(eventData) && IsInteractable())
+                view.Input.RequestCabinetTurn(direction);
+        }
+
+        public void Cancel()
+        {
+            if (pointer == int.MinValue) return;
+            pointer = int.MinValue;
+            InstantClearState();
         }
 
         public override void OnPointerExit(PointerEventData eventData)
@@ -75,7 +77,7 @@ namespace RockBalancing
 
         protected override void OnDisable()
         {
-            pointer = int.MinValue;
+            Cancel();
             base.OnDisable();
         }
     }
