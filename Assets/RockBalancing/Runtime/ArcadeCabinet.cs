@@ -37,6 +37,7 @@ namespace RockBalancing
         Vector3 cameraFocus;
         bool releasing;
         Stone suppliedStone;
+        ArcadeConsoleHitTest consoleHitTest;
 
         public void Initialize(GameObject model)
         {
@@ -48,6 +49,7 @@ namespace RockBalancing
             LiftButton = console.Find("Button Lift");
             LowerButton = console.Find("Button Lower");
             ReleaseButton = console.Find("Button Release");
+            consoleHitTest = new ArcadeConsoleHitTest(body, Joystick, LiftButton, LowerButton, ReleaseButton);
             roof = body.Find("Roof");
             bridge = body.Find("Bridge");
             trolley = body.Find("Trolley");
@@ -112,6 +114,9 @@ namespace RockBalancing
                 : (float)Mathf.Max(1, Screen.width) / Mathf.Max(1, Screen.height);
         }
 
+        internal bool TryHitControl(Ray ray, float range, out float distance) =>
+            consoleHitTest.TryHitControl(ray, range, out distance);
+
         void PlaceConsole(float aspect, float framingRise)
         {
             // A taller portrait window leaves space beneath the glass for the deck.
@@ -128,9 +133,12 @@ namespace RockBalancing
         public Vector3 LimitTravel(Stone pending, Vector3 to)
         {
             TrackSupply(pending);
+            // If a collision stopped an automatic descent, the player can still
+            // move sideways at that height to get clear of the obstacle.
+            float ceiling = pending == null ? maximumLift : Mathf.Max(maximumLift, pending.transform.position.y);
             return new Vector3(
                 Mathf.Clamp(to.x, -.45f, .45f),
-                Mathf.Min(to.y, maximumLift),
+                Mathf.Min(to.y, ceiling),
                 Mathf.Clamp(to.z, -.44f, .44f));
         }
 
@@ -153,22 +161,11 @@ namespace RockBalancing
         {
             var pending = session.Pending;
             var supply = session.StandardSupplyPoint;
+            UpdateTravelCeiling(session, pending, supply.y);
             float restSupplyHeight = session.BaseTop + GameSession.SupplyClearance;
             float targetRise = supply.y - restSupplyHeight;
             supplyRise = Mathf.SmoothDamp(supplyRise, targetRise, ref supplyVelocity, SupplyFollowSeconds);
             cameraFocus = new Vector3(supply.x, restSupplyHeight + supplyRise, supply.z);
-
-            TrackSupply(pending);
-            if (pending != null)
-            {
-                // Retain the player's release height unless it exceeds the lift range
-                // as the working window returns from an earlier, taller tower.
-                float retreatSupply = Mathf.Max(cameraFocus.y, supply.y);
-                maximumLift = retreatSupply < session.PendingSupplyHeight
-                    ? Mathf.Min(initialLift, Mathf.Max(MinimumLift, retreatSupply + LiftAllowance))
-                    : initialLift;
-                if (maximumLift < initialLift) session.LowerPendingTo(maximumLift);
-            }
 
             var gripPoint = claw.position;
             float grip = jawAngle;
@@ -194,10 +191,9 @@ namespace RockBalancing
             }
 
             float headroom = Mathf.Max(head.y, gripPoint.y) + GantryClearance;
-            // The gantry can retract into the canopy as the claw approaches the top.
-            // Extend the glass only when the actual head would meet the roof.
-            float needed = Mathf.Max(supplyRise, headroom - roofCeiling);
-            float nextExtension = Mathf.Max(needed, extension - Time.deltaTime * 1.4f);
+            // The window and camera share the same smoothed vertical travel. Allow
+            // extra clearance when the claw head physically reaches the canopy.
+            float nextExtension = Mathf.Max(supplyRise, headroom - roofCeiling);
             if (nextExtension != extension)
             {
                 extension = nextExtension;
@@ -219,6 +215,18 @@ namespace RockBalancing
             jawAngle = grip;
             for (int i = 0; i < jaws.Length; i++)
                 jaws[i].localRotation = Quaternion.AngleAxis(jawAngle, jawAxes[i]) * jawHomes[i];
+        }
+
+        void UpdateTravelCeiling(GameSession session, Stone pending, float supplyHeight)
+        {
+            TrackSupply(pending);
+            if (pending == null) return;
+            // A collapse can reduce the legal lift range immediately. Keep any
+            // release height inside that range and sweep down only as far as safe.
+            maximumLift = supplyHeight < session.PendingSupplyHeight
+                ? Mathf.Min(initialLift, Mathf.Max(MinimumLift, supplyHeight + LiftAllowance))
+                : initialLift;
+            if (maximumLift < initialLift) session.LowerPendingTo(maximumLift);
         }
 
         public void ShowControls(Vector2 stick, bool raising, bool lowering, bool releasePressed)
