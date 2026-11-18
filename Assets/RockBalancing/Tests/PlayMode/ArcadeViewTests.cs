@@ -143,6 +143,8 @@ namespace RockBalancing.Tests
             Assert.That(session.TowerTop(), Is.EqualTo(session.BaseTop).Within(.001f));
             yield return null;
             Assert.That(camera.transform.position.y, Is.InRange(startPosition.y + .05f, highPosition.y));
+            Assert.That(session.Pending.transform.position.y, Is.LessThan(session.BaseTop + .65f),
+                "The lift range should shrink with the tower while the camera is still above its resting position.");
             yield return new WaitForSeconds(1);
 
             Assert.That(Vector3.Distance(camera.transform.position, startPosition), Is.LessThan(.005f));
@@ -158,6 +160,54 @@ namespace RockBalancing.Tests
 
         Renderer Part(string name) =>
             root.GetComponentsInChildren<Renderer>().Single(renderer => renderer.name == name);
+
+        [UnityTest]
+        public IEnumerator AHighTowerCollapseKeepsTheWorkingWindowInFrameAndRetainsAUsableReleaseHeight()
+        {
+            FrameAt(900, 430);
+            session.Initialize(new StackableStones(), session.Base, session.Ground);
+            yield return null;
+            var roof = Part("Roof");
+            var glass = Part("Glass Front");
+            float originalHeight = glass.bounds.size.y;
+
+            for (int i = 0; i < 11; i++)
+            {
+                var next = session.Pending;
+                next.Body.constraints = RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezePositionZ |
+                    RigidbodyConstraints.FreezeRotation;
+                Assert.That(session.Adjust(next, Vector3.up * (session.TowerTop() + .11f), Quaternion.identity), Is.True);
+                Assert.That(session.Release(next), Is.True);
+                yield return new WaitForSeconds(.35f);
+            }
+            yield return new WaitForSeconds(.65f);
+            Assert.That(session.TowerTop() - session.BaseTop, Is.GreaterThan(2f));
+            AssertWorkingWindow(roof.bounds, glass.bounds, originalHeight);
+
+            var pending = session.Pending;
+            var clearOfTower = new Vector3(.43f, pending.transform.position.y, -.42f);
+            Assert.That(session.Adjust(pending, clearOfTower, pending.transform.rotation), Is.True);
+            var selectedRelease = new Vector3(clearOfTower.x, session.BaseTop + .49f, clearOfTower.z);
+            Assert.That(session.Adjust(pending, selectedRelease, pending.transform.rotation), Is.True);
+            foreach (var released in session.Stones.Where(stone => stone.Released))
+            {
+                released.Body.constraints = RigidbodyConstraints.None;
+                released.Body.position += Vector3.right * 3;
+            }
+
+            float end = Time.unscaledTime + .9f;
+            int samples = 0;
+            while (Time.unscaledTime < end)
+            {
+                yield return null;
+                AssertWorkingWindow(roof.bounds, glass.bounds, originalHeight);
+                Assert.That(pending.transform.position, Is.EqualTo(selectedRelease));
+                samples++;
+            }
+            Assert.That(samples, Is.GreaterThan(4));
+            Assert.That(session.TowerTop(), Is.EqualTo(session.BaseTop).Within(.001f));
+            Assert.That(glass.bounds.size.y, Is.EqualTo(originalHeight).Within(.01f));
+        }
 
         [UnityTest]
         public IEnumerator ArcadeRecordKeepsTheHighestStableHeightUntilRestart()
@@ -286,25 +336,27 @@ namespace RockBalancing.Tests
             keyboard.MakeCurrent();
             var stone = session.Pending;
             var blank = ScreenPoint(.08f, .60f);
-            var side = ScreenPoint(.2675f, .60f);
+            var side = ScreenPoint(.16f, .60f);
             foreach (var name in new[] { "Move", "Lift", "Lower", "Release" })
             {
                 foreach (bool pressWhileReturning in new[] { false, true })
                 {
-                    var control = Point(Control(name));
                     var position = stone.transform.position;
                     var rotation = stone.transform.rotation;
                     var offset = name == "Move" ? Vector2.right * 30 : Vector2.zero;
                     yield return BeginOrbit(blank, side);
-                    AssertFacing(Vector3.right);
+                    Assert.That(Azimuth(), Is.EqualTo(38.4f).Within(.2f));
 
                     if (pressWhileReturning)
                     {
                         Touch(1, TouchPhase.Ended, side);
                         yield return new WaitForSecondsRealtime(.10f);
-                        Assert.That(Azimuth(), Is.InRange(10f, 89f));
+                        Assert.That(Azimuth(), Is.InRange(10f, 38f));
                     }
 
+                    string part = name == "Move" ? "Joystick" : "Button " + name;
+                    string material = name == "Move" || name == "Release" ? "Vermilion" : "Mint";
+                    var control = VisibleControlPoint(part, material);
                     Touch(2, TouchPhase.Began, control);
                     InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.W, Key.UpArrow));
                     yield return null;
@@ -315,7 +367,7 @@ namespace RockBalancing.Tests
                     }
                     if (!pressWhileReturning)
                     {
-                        AssertFacing(Vector3.right);
+                        Assert.That(Azimuth(), Is.EqualTo(38.4f).Within(.2f));
                         Touch(1, TouchPhase.Ended, side);
                     }
 
@@ -340,6 +392,71 @@ namespace RockBalancing.Tests
                 if (name == "Lower") Assert.That(stone.transform.position.y, Is.LessThan(before.y - .02f));
                 if (name == "Release") Assert.That(stone.Released, Is.True);
             }
+        }
+
+        [UnityTest]
+        public IEnumerator AFormerConsoleHotspotCanRegrabTheReturningView()
+        {
+            FrameAt(430, 900);
+            yield return null;
+            var oldReleasePoint = VisibleControlPoint("Button Release", "Vermilion");
+            var blank = ScreenPoint(.08f, .60f);
+            var rear = blank + Vector2.right * (Screen.width * .375f);
+            yield return BeginOrbit(blank, rear);
+            AssertFacing(Vector3.back);
+            Touch(1, TouchPhase.Ended, rear);
+            yield return new WaitForSecondsRealtime(.07f);
+
+            Touch(2, TouchPhase.Began, oldReleasePoint);
+            yield return null;
+            yield return null;
+            float grabbed = Azimuth();
+            Assert.That(Mathf.Abs(grabbed), Is.GreaterThan(80f));
+            yield return new WaitForSecondsRealtime(.2f);
+            Assert.That(Azimuth(), Is.EqualTo(grabbed).Within(.1f));
+
+            var moved = oldReleasePoint + Vector2.right * (Screen.width * .05f);
+            Touch(2, TouchPhase.Moved, moved);
+            yield return null;
+            yield return null;
+            Assert.That(Mathf.DeltaAngle(grabbed, Azimuth()), Is.EqualTo(24f).Within(.2f));
+            Touch(2, TouchPhase.Ended, moved);
+        }
+
+        [UnityTest]
+        public IEnumerator TheVisibleReleaseButtonCannotRegrabOrActDuringReturn()
+        {
+            FrameAt(430, 900);
+            yield return null;
+            var stone = session.Pending;
+            var front = VisibleControlPoint("Button Release", "Vermilion");
+            var blank = ScreenPoint(.08f, .60f);
+            var side = blank + Vector2.right * (Screen.width * .125f);
+            yield return BeginOrbit(blank, side);
+            Touch(1, TouchPhase.Ended, side);
+            yield return new WaitForSecondsRealtime(.07f);
+            var returning = VisibleControlPoint("Button Release", "Vermilion");
+            Assert.That(Mathf.Abs(Azimuth()), Is.GreaterThan(25f));
+            Assert.That(Vector2.Distance(returning, front), Is.GreaterThan(Screen.width * .04f));
+
+            Touch(2, TouchPhase.Began, returning);
+            yield return new WaitForSecondsRealtime(.55f);
+            AssertFacing(Vector3.forward);
+            Touch(2, TouchPhase.Moved, front);
+            yield return null;
+            Touch(2, TouchPhase.Ended, front);
+            yield return null;
+            Assert.That(stone.Released, Is.False);
+
+            yield return Tap(front, 3);
+            Assert.That(stone.Released, Is.True);
+        }
+
+        Vector2 VisibleControlPoint(string part, string material)
+        {
+            var center = ArcadeFrontTests.MaterialCenter(Part(part), material);
+            var point = camera.WorldToViewportPoint(center);
+            return ScreenPoint(point.x, point.y);
         }
 
         [UnityTest]

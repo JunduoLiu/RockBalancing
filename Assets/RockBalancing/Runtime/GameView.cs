@@ -158,15 +158,12 @@ namespace RockBalancing
                 var target = Input.StepRotationTarget;
                 foreach (var ring in rotationRings) ring.Show(target, Input.Cabinet, Input.ViewCamera);
             }
-            controls.SetActive(!Session.Waiting);
+            controls.SetActive(!Session.Waiting && Input.ArcadeControlsAvailable);
             retryButton.gameObject.SetActive(Session.Waiting);
             ReleaseButton.interactable = Input.CanAct;
             if (DiscardButton != null) DiscardButton.interactable = Input.CanAct;
-            // Keep the front hit areas inert during observation so a press meant
-            // for the console cannot pick up a returning view.
-            if (controls.activeSelf && Input.ArcadeControlsAvailable) arcadeConsole?.Layout();
-            if (!Input.ArcadeControlsAvailable) arcadeConsole?.ReleaseButton.Cancel();
             arcadeConsole?.ShowControls();
+            if (controls.activeSelf) arcadeConsole?.Layout();
             HeightLabel.text = Session.Stabilizing ? "stablizing" : Session.CurrentHeightMm + " mm";
             HeightLabel.fontSize = HeightLabel.resizeTextMaxSize = Session.Stabilizing ? 28 : 44;
             ShareButton.interactable = Session.CanShare && !Input.Modal;

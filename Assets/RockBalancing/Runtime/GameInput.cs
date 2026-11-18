@@ -302,10 +302,21 @@ namespace RockBalancing
         }
         bool IsUI(Vector2 p)
         {
-            if (EventSystem.current == null) return false;
-            uiHits.Clear();
-            EventSystem.current.RaycastAll(new PointerEventData(EventSystem.current) { position = p }, uiHits);
-            return uiHits.Count > 0;
+            if (EventSystem.current != null)
+            {
+                uiHits.Clear();
+                EventSystem.current.RaycastAll(new PointerEventData(EventSystem.current) { position = p }, uiHits);
+                if (uiHits.Count > 0) return true;
+            }
+            if (Cabinet == null || ArcadeControlsAvailable) return false;
+
+            // During orbit or return the front touch targets are disabled. Use the
+            // camera pose that drew the frame where the pointer went down.
+            var ray = ViewCamera.ViewportPointToRay(new Vector2(p.x / Screen.width, p.y / Screen.height));
+            if (!Cabinet.TryHitControl(ray, ViewCamera.farClipPlane, out float distance)) return false;
+            foreach (var hit in Physics.RaycastAll(ray, distance, ~0, QueryTriggerInteraction.Collide))
+                if (hit.collider == Session.Base || hit.collider.TryGetComponent<Stone>(out _)) return false;
+            return true;
         }
         void Move(Vector2 p)
         {
