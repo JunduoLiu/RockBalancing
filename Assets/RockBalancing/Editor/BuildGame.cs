@@ -105,7 +105,9 @@ namespace RockBalancing.Editor
         static void ConfigureAssets(GameBootstrap bootstrap)
         {
             bootstrap.Typeface=AssetDatabase.LoadAssetAtPath<Font>("Assets/RockBalancing/Fonts/BalanceSans.ttf");
-            bootstrap.StoneMaterial=GetMaterial("Stone","Universal Render Pipeline/Lit");
+            bootstrap.StoneMaterial = bootstrap.CabinetModel != null
+                ? AssetDatabase.LoadAssetAtPath<Material>("Assets/RockBalancing/Arcade/Materials/ArcadeStone.mat")
+                : GetMaterial("Stone","Universal Render Pipeline/Lit");
             bootstrap.GuideMaterial=GetMaterial("Guide","Universal Render Pipeline/Unlit");
         }
         static Material GetMaterial(string name,string shader)

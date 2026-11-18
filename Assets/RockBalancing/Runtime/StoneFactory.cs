@@ -39,7 +39,9 @@ namespace RockBalancing
                 frictionCombine = PhysicsMaterialCombine.Maximum, bounceCombine = PhysicsMaterialCombine.Minimum
             };
             shape.sharedMaterial = physicsMaterial;
-            var material = MakeMaterial(new Color(.38f, .46f, .45f),template);
+            var material = arcade && template != null
+                ? new Material(template)
+                : MakeMaterial(new Color(.38f, .46f, .45f), template);
             go.GetComponent<Renderer>().sharedMaterial = material;
             var body = go.AddComponent<Rigidbody>();
             body.isKinematic = true;

@@ -41,16 +41,19 @@ Shader "RockBalancing/Arcade Cabinet Glass"
 
             half4 Frag(Varyings input) : SV_Target
             {
-                // Reflections taper out at the corners, leaving the stacking sightline clear.
+                // Two short reflection bands at the upper corner leave the central sightline clear.
                 float2 uv = input.uv;
-                float diagonal = uv.x + 0.40 * uv.y;
-                float streak = 1.0 - smoothstep(0.003, 0.013, abs(diagonal - 0.466));
-                streak += 0.48 * (1.0 - smoothstep(0.002, 0.006, abs(diagonal - 0.485)));
-                streak *= smoothstep(0.60, 0.95, uv.y);
+                float diagonal = uv.x + .40 * uv.y;
+                float aa = max(fwidth(diagonal), .0001);
+                float streak = 1.0 - smoothstep(.007 - aa, .007 + aa, abs(diagonal - .466));
+                streak += .45 * (1.0 - smoothstep(.002 - aa, .002 + aa, abs(diagonal - .483)));
+                streak *= smoothstep(.69, .94, uv.y);
                 float2 edge = min(uv, 1.0 - uv);
-                float rim = 1.0 - smoothstep(0.0, 0.027, min(edge.x, edge.y));
-                return half4(lerp(_Tint.rgb, half3(0.92, 1.0, 0.98), streak),
-                             _Tint.a + 0.25 * streak + 0.084 * rim);
+                float nearest = min(edge.x, edge.y);
+                float rimAA = max(fwidth(nearest), .0001);
+                float rim = 1.0 - smoothstep(.012 - rimAA, .012 + rimAA, nearest);
+                return half4(lerp(_Tint.rgb, half3(.92, 1, .98), streak),
+                             _Tint.a + .20 * streak + .055 * rim);
             }
             ENDHLSL
         }
