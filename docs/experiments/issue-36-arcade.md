@@ -14,4 +14,4 @@
 
 ![正面释放后，侧窗看到落石与下一颗待摆石头](issue-36-release.jpg)
 
-部署平台确认版本发布成功。线上内置浏览器在加载游戏前遇到 Cloudflare 拦截。上表记录的是本地浏览器结果，实体手机打开线上网址和实际触摸仍待核验。
+首次发布使用的域名在加载游戏前遇到 Cloudflare 拦截。同一份构建随后发布至 GitHub Pages。未登录的 Chrome 已直接打开两个入口，两套游戏的加载器、框架、数据和 WebAssembly 文件均返回 HTTP 200。上表记录的是本地浏览器结果，实体手机触摸仍待核验。[街机版](https://xybuilds.github.io/strata-rock-arcade/arcade/) · [原版](https://xybuilds.github.io/strata-rock-arcade/)。
