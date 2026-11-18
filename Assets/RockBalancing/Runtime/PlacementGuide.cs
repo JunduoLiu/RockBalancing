@@ -8,6 +8,7 @@ namespace RockBalancing
     {
         public GameSession Session;
         public Material Template;
+        internal bool Arcade;
         public Vector3 DropPosition { get; private set; }
         LineRenderer stem, ring, footprint;
         Material material;
@@ -46,8 +47,17 @@ namespace RockBalancing
             float pixelSize=camera!=null ? 2*Mathf.Max(camera.nearClipPlane,
                 Vector3.Dot(center-camera.transform.position,camera.transform.forward))*
                 Mathf.Tan(camera.fieldOfView*Mathf.Deg2Rad*.5f)/Mathf.Max(1,camera.pixelHeight) : 0;
-            stem.startWidth=stem.endWidth=Mathf.Max(.008f,pixelSize*2);
-            ring.startWidth=ring.endWidth=footprint.startWidth=footprint.endWidth=Mathf.Max(.003f,pixelSize*2);
+            if (Arcade && camera != null)
+            {
+                if (camera.orthographic) pixelSize = 2 * camera.orthographicSize / Mathf.Max(1, camera.pixelHeight);
+                stem.startWidth = stem.endWidth = pixelSize * 1.5f;
+                ring.startWidth = ring.endWidth = footprint.startWidth = footprint.endWidth = pixelSize * 1.25f;
+            }
+            else
+            {
+                stem.startWidth = stem.endWidth = Mathf.Max(.008f, pixelSize * 2);
+                ring.startWidth = ring.endWidth = footprint.startWidth = footprint.endWidth = Mathf.Max(.003f, pixelSize * 2);
+            }
             Vector3 right=camera!=null?camera.transform.right:Vector3.right;
             Vector3 up=camera!=null?camera.transform.up:Vector3.up;
             for(int i=0;i<65;i++)

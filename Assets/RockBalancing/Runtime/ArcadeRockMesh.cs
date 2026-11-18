@@ -54,10 +54,12 @@ namespace RockBalancing
             }
             var vertices = new List<Vector3>();
             var triangles = new List<int>();
-            void Face(params Vector3[] polygon)
+            var faceTones = new List<Color32>();
+            void Face(byte tone, params Vector3[] polygon)
             {
                 int first = vertices.Count;
                 vertices.AddRange(polygon);
+                for (int i = 0; i < polygon.Length; i++) faceTones.Add(new Color32(tone, tone, tone, 255));
                 for (int i = 1; i < polygon.Length - 1; i++)
                 {
                     triangles.Add(first);
@@ -65,17 +67,20 @@ namespace RockBalancing
                     triangles.Add(first + i + 1);
                 }
             }
-            Face(bottom);
+            Face(110, bottom);
             for (int i = 0; i < outline.Length; i++)
             {
                 int next = (i + 1) % outline.Length;
-                Face(bottom[i], outline[i], outline[next], bottom[next]);
-                Face(outline[i], top[i], top[next], outline[next]);
+                // Uniform color per plane keeps small bevels legible in the same lighting band.
+                byte alternating = (byte)((i % 2) * 54);
+                Face((byte)(64 + alternating), bottom[i], outline[i], outline[next], bottom[next]);
+                Face((byte)(192 - alternating), outline[i], top[i], top[next], outline[next]);
             }
             System.Array.Reverse(top);
-            Face(top);
+            Face(255, top);
             var mesh = new Mesh { name = name };
             mesh.SetVertices(vertices);
+            mesh.SetColors(faceTones);
             mesh.SetTriangles(triangles, 0);
             mesh.RecalculateNormals();
             return mesh;
