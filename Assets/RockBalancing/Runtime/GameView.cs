@@ -25,8 +25,6 @@ namespace RockBalancing
         ArcadeConsole arcadeConsole;
         ArcadeSettings arcadeSettings;
         ArcadeRotationRing[] rotationRings;
-        ArcadeFaceButton previousFace, nextFace;
-        RectTransform leftWindowMargin, rightWindowMargin;
         readonly Color ink = new Color(.16f, .22f, .23f);
         readonly Color paper = new Color(.96f, .95f, .91f, .96f);
 
@@ -60,13 +58,6 @@ namespace RockBalancing
                 BuildOriginalControls();
             else
             {
-                var background = Input.ViewCamera.backgroundColor;
-                leftWindowMargin = Panel(Root, "Left window margin", Vector2.zero, Vector2.up, background, false);
-                rightWindowMargin = Panel(Root, "Right window margin", Vector2.right, Vector2.one, background, false);
-                leftWindowMargin.SetAsFirstSibling();
-                rightWindowMargin.SetAsFirstSibling();
-                previousFace = BuildFaceButton("Previous cabinet face", -1);
-                nextFace = BuildFaceButton("Next cabinet face", 1);
                 var deck = Panel(Root, "Cabinet controls", Vector2.zero, Vector2.one, Color.clear, false);
                 controls = deck.gameObject;
                 arcadeConsole = new ArcadeConsole(this, deck, Input.Cabinet);
@@ -163,22 +154,18 @@ namespace RockBalancing
             RestartButton.interactable = !Input.Modal && !Session.ShareBusy;
             if (arcadeSettings != null)
             {
-                var viewport = Input.ViewCamera.rect;
-                leftWindowMargin.gameObject.SetActive(viewport.xMin > 0);
-                rightWindowMargin.gameObject.SetActive(viewport.xMax < 1);
-                leftWindowMargin.anchorMax = new Vector2(viewport.xMin, 1);
-                rightWindowMargin.anchorMin = new Vector2(viewport.xMax, 0);
                 arcadeSettings.MenuButton.interactable = !Input.Modal;
                 var target = Input.StepRotationTarget;
                 foreach (var ring in rotationRings) ring.Show(target, Input.Cabinet, Input.ViewCamera);
             }
-            controls.SetActive(!Session.Waiting && (Input.Cabinet == null || Input.Cabinet.IsFront));
+            controls.SetActive(!Session.Waiting);
             retryButton.gameObject.SetActive(Session.Waiting);
             ReleaseButton.interactable = Input.CanAct;
             if (DiscardButton != null) DiscardButton.interactable = Input.CanAct;
-            previousFace?.Layout();
-            nextFace?.Layout();
-            if (controls.activeSelf) arcadeConsole?.Layout();
+            // Keep the front hit areas inert during observation so a press meant
+            // for the console cannot pick up a returning view.
+            if (controls.activeSelf && Input.ArcadeControlsAvailable) arcadeConsole?.Layout();
+            if (!Input.ArcadeControlsAvailable) arcadeConsole?.ReleaseButton.Cancel();
             arcadeConsole?.ShowControls();
             HeightLabel.text = Session.Stabilizing ? "stablizing" : Session.CurrentHeightMm + " mm";
             HeightLabel.fontSize = HeightLabel.resizeTextMaxSize = Session.Stabilizing ? 28 : 44;
@@ -190,14 +177,6 @@ namespace RockBalancing
                 UpdateEdge(pendingEdge,Session.Pending.transform.position,"待摆石头");
             else
                 pendingEdge.transform.parent.gameObject.SetActive(false);
-        }
-        ArcadeFaceButton BuildFaceButton(string name, int direction)
-        {
-            var anchor = new Vector2(direction < 0 ? 0 : 1, .55f);
-            var rect = Panel(Root, name, anchor, anchor, paper, true);
-            var button = rect.gameObject.AddComponent<ArcadeFaceButton>();
-            button.Initialize(this, direction, ink);
-            return button;
         }
         Button ActionButton(Transform parent, string title, string icon, UnityEngine.Events.UnityAction action)
         {
