@@ -14,4 +14,6 @@
 
 ![正面释放后，侧窗看到落石与下一颗待摆石头](issue-36-release.jpg)
 
-首次发布使用的域名在加载游戏前遇到 Cloudflare 拦截。同一份构建随后发布至 GitHub Pages。未登录的 Chrome 已直接打开两个入口，两套游戏的加载器、框架、数据和 WebAssembly 文件均返回 HTTP 200。上表记录的是本地浏览器结果，实体手机触摸仍待核验。[街机版](https://xybuilds.github.io/strata-rock-arcade/arcade/) · [原版](https://xybuilds.github.io/strata-rock-arcade/)。
+首次发布使用的域名在加载游戏前遇到 Cloudflare 拦截。同一份构建随后发布至 GitHub Pages。未登录的 Chrome 已直接打开两个入口，两套游戏的加载器、框架、数据和 WebAssembly 文件均返回 HTTP 200。街机版线上试玩时释放石头并切到侧窗，本轮显示 44 mm，钩爪已夹住下一颗。[街机版](https://xybuilds.github.io/strata-rock-arcade/arcade/) · [原版](https://xybuilds.github.io/strata-rock-arcade/)。
+
+2026-11-18，用户确认公开试玩通过。用户未提供验收设备型号或浏览器版本。
