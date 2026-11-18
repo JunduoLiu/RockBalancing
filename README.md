@@ -2,7 +2,7 @@
 
 面向手机浏览器的轻量 Unity 3D 叠石头小游戏。首版玩法已实现，正在进行设备验收。
 
-**免登录试玩**　[STRATA 街机版](https://xybuilds.github.io/strata-rock-arcade/arcade/) · [同一构建的原版](https://xybuilds.github.io/strata-rock-arcade/)。
+**上一版免登录试玩（#36）**　[STRATA 街机版](https://xybuilds.github.io/strata-rock-arcade/arcade/) · [同一构建的原版](https://xybuilds.github.io/strata-rock-arcade/)。
 
 [打开公开测试版](https://rock-balance-playtest-20261110.burblingcrow1.chatgpt.site/)（无需登录）。当前为站点版本 **2**，游戏构建对应 `0348d9c`，包含 #22–25 的扁石、摇杆、独立释放及三维观察迭代。见[本轮构建与桌面预检证据](docs/experiments/issue-26-web-preflight.md)和 [Issue #26](https://github.com/JunduoLiu/RockBalancing/issues/26)；三项 iPhone＋Chrome 真机验收待测，[PR #21](https://github.com/JunduoLiu/RockBalancing/pull/21) 仍为草稿且未合并。
 
@@ -11,7 +11,7 @@
 使用 Unity **6000.3.20f1**。在 Unity Hub 中添加本仓库根目录，即同时包含
 `Assets/`、`Packages/` 和 `ProjectSettings/` 的文件夹。
 
-原版场景为 `Assets/RockBalancing/Scenes/Balance.unity`，STRATA 街机版场景为 `Assets/RockBalancing/Scenes/Arcade.unity`。打开对应场景后进入 Play Mode。两版 Web 构建的入口分别为 `/` 和 `/arcade/`。街机版的四面取景、操作验证和落石截图见[浏览器验收记录](docs/experiments/issue-36-arcade.md)。
+原版场景为 `Assets/RockBalancing/Scenes/Balance.unity`，STRATA 街机版场景为 `Assets/RockBalancing/Scenes/Arcade.unity`。打开对应场景后进入 Play Mode。两版 Web 构建的入口分别为 `/` 和 `/arcade/`。本分支已实现透视环绕、悬浮控制台、连续刻度旋转和全场景 Cel Shading。[横竖屏截图与验收记录](docs/experiments/issue-42-arcade.md)
 操作方式、Web 构建和测试命令见[游戏说明](Assets/RockBalancing/README.md)。
 
 `Library/`、`Temp/`、`Logs/`、`UserSettings/` 等本地生成内容由 Unity 重建，不纳入版本控制。
