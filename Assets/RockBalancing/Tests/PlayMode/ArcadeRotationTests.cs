@@ -163,6 +163,46 @@ namespace RockBalancing.Tests
             Assert.That(session.Pending, Is.SameAs(stone));
         }
 
+        [UnityTest]
+        public IEnumerator HoldingAfterAStepLocksTheFrontUntilAFreshArrowPress()
+        {
+            yield return SetStepMode();
+            var next = Control("Next cabinet face");
+            var previous = Control("Previous cabinet face");
+            var rightEdge = ControlPoint("Next cabinet face");
+            var leftEdge = ControlPoint("Previous cabinet face");
+            var front = input.ViewCamera.transform.position;
+            var center = StoneCenter();
+            var dragged = center + Vector2.down * Mathf.Max(40, .05f * Screen.height);
+
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Began, center);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, dragged);
+            var pose = Quaternion.AngleAxis(15, Vector3.right);
+            ExpectPose(pose);
+            Assert.That(next.gameObject.activeInHierarchy || previous.gameObject.activeInHierarchy, Is.False);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Began, leftEdge, id: 2);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Ended, leftEdge, id: 2);
+            Assert.That(input.ViewCamera.transform.position, Is.EqualTo(front));
+            Assert.That(VisibleRingCount(), Is.EqualTo(3));
+
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Began, rightEdge, id: 3);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Ended, dragged);
+            Assert.That(next.gameObject.activeInHierarchy && previous.gameObject.activeInHierarchy, Is.True);
+            Assert.That(VisibleRingCount(), Is.Zero);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Ended, rightEdge, id: 3);
+            Assert.That(input.ViewCamera.transform.position, Is.EqualTo(front));
+
+            yield return Tap(rightEdge);
+            Assert.That(input.ViewCamera.transform.position.x, Is.LessThan(-1f));
+            center = StoneCenter();
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Began, center);
+            Assert.That(VisibleRingCount(), Is.Zero);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, center + Vector2.right * 44);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Ended, center + Vector2.right * 44);
+            ExpectPose(pose);
+            Assert.That(session.Pending, Is.SameAs(stone));
+        }
+
         IEnumerator SetStepMode()
         {
             yield return Tap(ControlPoint("设置"));
