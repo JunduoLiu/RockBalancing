@@ -11,17 +11,20 @@ namespace RockBalancing
         [Range(1, 179)] public float ArcadeRotationStepDegrees = 15;
         public StoneShapeSettings StoneShapes = new StoneShapeSettings();
         readonly System.Collections.Generic.List<Material> materials=new System.Collections.Generic.List<Material>();
+        Mesh pedestalMesh;
         void Start()
         {
             Application.targetFrameRate = 60;
             Application.runInBackground = true;
-            var ground = Primitive("Ground", new Vector3(0,-.13f,0), new Vector3(200,.1f,200), new Color(.80f,.84f,.81f));
-            var pedestal = Primitive("Base stone", new Vector3(0,0,0), new Vector3(1,.16f,1), new Color(.36f,.40f,.38f));
+            var ground = Surface("Ground", new Vector3(0,-.13f,0), new Vector3(200,.1f,200), new Color(.80f,.84f,.81f));
+            if (CabinetModel != null) pedestalMesh = ArcadeRockMesh.CreatePedestal();
+            var pedestal = Surface("Base stone", Vector3.zero, pedestalMesh == null ? new Vector3(1, .16f, 1) : Vector3.one,
+                new Color(.36f, .40f, .38f), pedestalMesh);
             ArcadeCabinet cabinet = null;
             if (CabinetModel != null)
             {
                 ground.GetComponent<Renderer>().enabled = false;
-                var floor = Primitive("Arcade floor", new Vector3(0, -.74f, 0), new Vector3(200, .1f, 200),
+                var floor = Surface("Arcade floor", new Vector3(0, -.74f, 0), new Vector3(200, .1f, 200),
                     new Color(.45f, .53f, .50f));
                 var floorShape = floor.GetComponent<Collider>();
                 floorShape.enabled = false;
@@ -60,16 +63,25 @@ namespace RockBalancing
             var view = gameObject.AddComponent<GameView>();
             view.Session = session; view.Input = input; view.Typeface = Typeface;
             view.Build();
-            session.Initialize(new StoneFactory(StoneMaterial, StoneShapes), pedestal.GetComponent<Collider>(), ground.GetComponent<Collider>());
+            session.Initialize(new StoneFactory(StoneMaterial, StoneShapes, arcade: cabinet != null), pedestal.GetComponent<Collider>(), ground.GetComponent<Collider>());
             var guide=gameObject.AddComponent<PlacementGuide>();
             guide.Template=GuideMaterial; guide.Session=session;
             if (cabinet != null) return;
             var share=gameObject.AddComponent<ShareController>();
             share.Session=session;share.View=view;share.Input=input;share.Initialize();
         }
-        GameObject Primitive(string name, Vector3 position, Vector3 scale, Color color)
+        GameObject Surface(string name, Vector3 position, Vector3 scale, Color color, Mesh mesh = null)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            GameObject go;
+            if (mesh == null) go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            else
+            {
+                go = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider));
+                go.GetComponent<MeshFilter>().sharedMesh = mesh;
+                var collider = go.GetComponent<MeshCollider>();
+                collider.sharedMesh = mesh;
+                collider.convex = true;
+            }
             go.name = name; go.transform.SetParent(transform);
             go.transform.position = position; go.transform.localScale = scale;
             var material=StoneFactory.MakeMaterial(color,StoneMaterial);
@@ -77,6 +89,10 @@ namespace RockBalancing
             go.GetComponent<Renderer>().sharedMaterial = material;
             return go;
         }
-        void OnDestroy() { foreach(var material in materials) if(material!=null)Destroy(material); }
+        void OnDestroy()
+        {
+            foreach(var material in materials) if(material!=null)Destroy(material);
+            if (pedestalMesh != null) Destroy(pedestalMesh);
+        }
     }
 }
