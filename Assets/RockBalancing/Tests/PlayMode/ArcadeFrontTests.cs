@@ -41,6 +41,9 @@ namespace RockBalancing.Tests
             var stone = session.Pending;
             Assert.That(stone, Is.Not.Null);
             var initial = stone.transform.position;
+            var initialCameraPosition = camera.transform.position;
+            var initialCameraRotation = camera.transform.rotation;
+            float initialFov = camera.fieldOfView;
             var cabinet = root.GetComponent<ArcadeCabinet>();
             var stick = ControlPoint(cabinet.Joystick, "Vermilion");
             var height = initial.y;
@@ -57,6 +60,9 @@ namespace RockBalancing.Tests
             Assert.That(stone.transform.position.y, Is.LessThan(height - .03f));
             Assert.That(stone.transform.position.x, Is.EqualTo(planarPosition.x).Within(.001f));
             Assert.That(stone.transform.position.z, Is.EqualTo(planarPosition.z).Within(.001f));
+            Assert.That(camera.transform.position, Is.EqualTo(initialCameraPosition));
+            Assert.That(camera.transform.rotation, Is.EqualTo(initialCameraRotation));
+            Assert.That(camera.fieldOfView, Is.EqualTo(initialFov));
 
             var position = stone.transform.position;
             var rotation = stone.transform.rotation;
@@ -71,6 +77,7 @@ namespace RockBalancing.Tests
             yield return Press(ControlPoint(cabinet.ReleaseButton, "Vermilion"), Vector2.zero, .03f);
             Assert.That(stone.Released, Is.True);
             Assert.That(session.Pending, Is.Not.Null.And.Not.SameAs(stone));
+            Assert.That(camera.transform.position, Is.EqualTo(initialCameraPosition));
             yield return new WaitForSeconds(1);
             Assert.That(stone.transform.position.y, Is.LessThan(position.y));
             Assert.That(session.CurrentHeightMm, Is.GreaterThan(0));
@@ -151,7 +158,7 @@ namespace RockBalancing.Tests
             }
         }
 
-        static Vector3 MaterialCenter(Renderer renderer, string materialName)
+        internal static Vector3 MaterialCenter(Renderer renderer, string materialName)
         {
             int index = System.Array.FindIndex(renderer.sharedMaterials, material => material.name == materialName);
             var mesh = renderer.GetComponent<MeshFilter>().sharedMesh;
