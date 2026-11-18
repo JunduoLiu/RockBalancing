@@ -370,12 +370,12 @@ namespace RockBalancing.Tests
             var head = cabinet.GetComponentsInChildren<Renderer>().Single(renderer => renderer.name == "Claw head");
             var jaw = cabinet.GetComponentsInChildren<Renderer>().Single(renderer => renderer.name == "Claw jaw 1");
             var closed = jaw.transform.localRotation;
-            var buttonHeight = cabinet.ReleaseButton.position.y;
+            var buttonHeight = cabinet.ReleaseButton.localPosition.y;
             var release = Point(Control("Release"));
             Touch(1, TouchPhase.Began, release);
             yield return null;
             yield return null;
-            Assert.That(cabinet.ReleaseButton.position.y, Is.LessThan(buttonHeight - .006f));
+            Assert.That(cabinet.ReleaseButton.localPosition.y, Is.LessThan(buttonHeight - .006f));
             Touch(1, TouchPhase.Ended, release);
             yield return null;
             Assert.That(stone.Released, Is.True);
@@ -391,7 +391,7 @@ namespace RockBalancing.Tests
             yield return new WaitForSeconds(.38f);
             Assert.That(head.bounds.center.x, Is.EqualTo(next.transform.position.x).Within(.005f));
             Assert.That(jaw.bounds.min.y, Is.LessThan(next.HighestPoint()));
-            Assert.That(cabinet.ReleaseButton.position.y, Is.EqualTo(buttonHeight));
+            Assert.That(cabinet.ReleaseButton.localPosition.y, Is.EqualTo(buttonHeight));
         }
 
         [UnityTest]
