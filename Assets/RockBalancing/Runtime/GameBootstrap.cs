@@ -37,17 +37,18 @@ namespace RockBalancing
             cameraObject.tag = "MainCamera";
             var camera = cameraObject.GetComponent<Camera>();
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = cabinet == null ? new Color(.86f,.89f,.86f) : new Color(.57f,.63f,.61f);
+            camera.backgroundColor = cabinet == null ? new Color(.86f,.89f,.86f) : new Color32(135, 162, 154, 255);
             camera.fieldOfView = 42;
             camera.nearClipPlane = .02f;
-            camera.farClipPlane = 250;
+            // Keep the arcade shadow map focused on the cabinet and its contact surfaces.
+            camera.farClipPlane = cabinet == null ? 250 : 12;
             var lightObject = new GameObject("Sun", typeof(Light));
             lightObject.transform.SetParent(transform);
-            lightObject.transform.rotation = Quaternion.Euler(48,-35,0);
+            lightObject.transform.rotation = Quaternion.Euler(48, cabinet == null ? -35 : -145, 0);
             var light = lightObject.GetComponent<Light>();
             light.type = LightType.Directional;
             light.intensity = 1.4f;
-            light.shadows = LightShadows.Soft;
+            light.shadows = cabinet == null ? LightShadows.Soft : LightShadows.Hard;
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
             RenderSettings.ambientLight = new Color(.65f,.70f,.73f);
             var sessionObject = new GameObject("Game session");
@@ -68,6 +69,7 @@ namespace RockBalancing
             }
             var guide=gameObject.AddComponent<PlacementGuide>();
             guide.Template=GuideMaterial; guide.Session=session;
+            guide.Arcade = cabinet != null;
             if (cabinet != null) return;
             var share=gameObject.AddComponent<ShareController>();
             share.Session=session;share.View=view;share.Input=input;share.Initialize();

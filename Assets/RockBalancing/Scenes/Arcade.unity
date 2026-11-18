@@ -149,7 +149,7 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: RockBalancing.Runtime::RockBalancing.GameBootstrap
   Typeface: {fileID: 12800000, guid: 16bb33d21d97b354a913d1bd0c037e80, type: 3}
-  StoneMaterial: {fileID: 2100000, guid: efd37271ff5c0db4f9918526b8c624eb, type: 2}
+  StoneMaterial: {fileID: 2100000, guid: 97595e3aeca941d788ae344d0b427be5, type: 2}
   GuideMaterial: {fileID: 2100000, guid: 264e98806d7690547b9f27140f35b277, type: 2}
   CabinetModel: {fileID: 919132149155446097, guid: f5edb4466263e8c4ba7a84440342006b, type: 3}
 --- !u!4 &103346517
