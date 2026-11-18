@@ -78,44 +78,46 @@ namespace RockBalancing
 
         public void PlaceCamera(Camera camera)
         {
+            // Use the full render surface every frame. The camera's automatic aspect
+            // can already reflect the cropped side viewport from the previous frame.
+            var target = camera.targetTexture;
+            float renderAspect = target != null
+                ? (float)target.width / target.height
+                : (float)Screen.width / Mathf.Max(1, Screen.height);
             var aroundCabinet = Quaternion.Euler(0, -face * 90, 0);
             camera.orthographic = true;
             if (face % 2 != 0)
             {
-                PlaceSideCamera(camera, aroundCabinet);
+                PlaceSideCamera(camera, aroundCabinet, renderAspect);
                 return;
             }
 
             camera.rect = new Rect(0, 0, 1, 1);
-            camera.ResetProjectionMatrix();
+            camera.aspect = renderAspect;
             // The front pitch shows the tops of the physical controls through the same
             // frame as the claw and tower. The rear looks over the lower cabinet trim.
             var focus = new Vector3(0, (IsFront ? .38f : .43f) + extension * .5f, 0);
             var offset = new Vector3(0, IsFront ? 1.28f : .76f, 4.8f);
-            camera.orthographicSize = Mathf.Max(1.25f, .86f / camera.aspect) + extension * .53f;
+            camera.orthographicSize = Mathf.Max(1.25f, .86f / renderAspect) + extension * .53f;
             camera.transform.SetPositionAndRotation(
                 focus + aroundCabinet * offset,
                 aroundCabinet * Quaternion.Euler(IsFront ? 14.93f : 9f, 180, 0));
         }
 
-        void PlaceSideCamera(Camera camera, Quaternion aroundCabinet)
+        void PlaceSideCamera(Camera camera, Quaternion aroundCabinet, float renderAspect)
         {
             const float windowHalfWidth = .62f;
             const float minimumHalfHeight = .76f;
             var outside = aroundCabinet * Vector3.forward;
-            var halfHeight = windowHalfWidth / camera.aspect;
+            var halfHeight = windowHalfWidth / renderAspect;
             // Keep a level view through the pane. On wide screens use a narrower
             // viewport so the console stays outside the frame below the pane.
             float height = Mathf.Clamp(1.4f - halfHeight, .43f, .62f);
             var focus = new Vector3(0, height + extension * .5f, -.02f);
             camera.orthographicSize = Mathf.Max(halfHeight, minimumHalfHeight) + extension * .5f;
-            float width = Mathf.Min(1, windowHalfWidth / (camera.orthographicSize * camera.aspect));
+            float width = Mathf.Min(1, windowHalfWidth / (camera.orthographicSize * renderAspect));
             camera.rect = new Rect((1 - width) * .5f, 0, width, 1);
-            if (width < 1)
-                camera.projectionMatrix = Matrix4x4.Ortho(-windowHalfWidth, windowHalfWidth,
-                    -camera.orthographicSize, camera.orthographicSize, camera.nearClipPlane, camera.farClipPlane);
-            else
-                camera.ResetProjectionMatrix();
+            camera.aspect = renderAspect * width;
             camera.transform.SetPositionAndRotation(focus + outside * 4.8f, aroundCabinet * FrontHeading);
         }
 

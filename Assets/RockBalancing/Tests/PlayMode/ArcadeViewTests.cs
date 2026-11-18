@@ -21,6 +21,7 @@ namespace RockBalancing.Tests
         Scene scene;
         GameObject root;
         Camera camera;
+        RenderTexture renderTarget;
         GameSession session;
 
         [UnitySetUp]
@@ -42,6 +43,11 @@ namespace RockBalancing.Tests
         {
             if (touchscreen != null) InputSystem.RemoveDevice(touchscreen);
             if (keyboard != null) InputSystem.RemoveDevice(keyboard);
+            if (renderTarget != null)
+            {
+                camera.targetTexture = null;
+                Object.Destroy(renderTarget);
+            }
             if (scene.IsValid() && scene.isLoaded) yield return SceneManager.UnloadSceneAsync(scene);
         }
 
@@ -162,7 +168,7 @@ namespace RockBalancing.Tests
         [UnityTest]
         public IEnumerator PhoneFramingShowsTheFrontConsoleAndKeepsTheGapClearThroughBothSideWindows()
         {
-            camera.aspect = 390f / 844f;
+            FrameAt(390, 844);
             yield return null;
             var cabinet = root.GetComponent<ArcadeCabinet>();
             var controls = new[] { cabinet.Joystick, cabinet.LiftButton, cabinet.LowerButton, cabinet.ReleaseButton };
@@ -261,12 +267,13 @@ namespace RockBalancing.Tests
         [UnityTest]
         public IEnumerator HoldingThePhysicalJoystickGripDoesNotMoveTheStoneUntilDragged()
         {
-            camera.aspect = 430f / 900f;
+            FrameAt(430, 900);
             yield return null;
             var cabinet = root.GetComponent<ArcadeCabinet>();
             var stone = session.Pending;
             var start = stone.transform.position;
-            var knob = (Vector2)camera.WorldToScreenPoint(cabinet.Joystick.position + new Vector3(0, .159f, -.013f));
+            var grip = camera.WorldToViewportPoint(cabinet.Joystick.position + new Vector3(0, .159f, -.013f));
+            var knob = new Vector2(grip.x * Screen.width, grip.y * Screen.height);
             Touch(1, TouchPhase.Began, knob);
             yield return new WaitForSeconds(.24f);
             Assert.That(stone.transform.position, Is.EqualTo(start));
@@ -284,7 +291,7 @@ namespace RockBalancing.Tests
         [UnityTest]
         public IEnumerator LandscapeSideWindowsShowTheSupportAndGapWithTheConsoleOutsideTheFrame()
         {
-            camera.aspect = 16f / 9f;
+            FrameAt(900, 430);
             var cabinet = root.GetComponent<ArcadeCabinet>();
             session.Initialize(new StackableStones(), session.Base, session.Ground);
             yield return null;
@@ -316,6 +323,45 @@ namespace RockBalancing.Tests
                 Assert.That(session.TowerTop(), Is.GreaterThan(session.BaseTop + .15f));
                 Assert.That(session.Adjust(session.Pending, Vector3.up * (session.TowerTop() + .28f), Quaternion.identity), Is.True);
             }
+        }
+
+        [UnityTest]
+        public IEnumerator AutomaticLandscapeAspectKeepsTheSideCropStableAndRestoresTheFirstFrontFrame()
+        {
+            FrameAt(900, 430);
+            yield return null;
+            yield return null;
+            var reference = new Vector3(.25f, session.BaseTop + .04f, .20f);
+            var front = camera.WorldToViewportPoint(reference);
+
+            yield return Tap(Point(Control(Next)));
+            AssertFacing(Vector3.left);
+            var sideViewport = camera.rect;
+            var side = camera.WorldToViewportPoint(reference);
+            Assert.That(sideViewport.width, Is.InRange(.37f, .42f));
+            Assert.That(sideViewport.center.x, Is.EqualTo(.5f).Within(.001f));
+            for (int frame = 0; frame < 8; frame++)
+            {
+                yield return null;
+                Assert.That(camera.rect, Is.EqualTo(sideViewport), $"Side viewport changed on frame {frame}.");
+                Assert.That(Vector3.Distance(camera.WorldToViewportPoint(reference), side), Is.LessThan(.0001f));
+            }
+
+            var previous = Point(Control(Previous));
+            Touch(1, TouchPhase.Began, previous);
+            yield return null;
+            Touch(1, TouchPhase.Ended, previous);
+            yield return null;
+            AssertFacing(Vector3.forward);
+            Assert.That(camera.rect, Is.EqualTo(new Rect(0, 0, 1, 1)));
+            Assert.That(Vector3.Distance(camera.WorldToViewportPoint(reference), front), Is.LessThan(.0001f));
+        }
+
+        void FrameAt(int width, int height)
+        {
+            renderTarget = new RenderTexture(width, height, 24);
+            camera.targetTexture = renderTarget;
+            camera.ResetAspect();
         }
 
         [UnityTest]
