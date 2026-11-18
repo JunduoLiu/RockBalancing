@@ -55,11 +55,11 @@ namespace RockBalancing
         {
             var camera = input.ViewCamera;
             var stickPoint = camera.WorldToViewportPoint(cabinet.StickGrip);
-            var liftPoint = ScreenAnchor(camera, cabinet.LiftButton.position);
-            var lowerPoint = ScreenAnchor(camera, cabinet.LowerButton.position);
-            var releasePoint = ScreenAnchor(camera, cabinet.ReleaseButton.position);
+            var liftPoint = ScreenAnchor(camera, cabinet.LiftButton);
+            var lowerPoint = ScreenAnchor(camera, cabinet.LowerButton);
+            var releasePoint = ScreenAnchor(camera, cabinet.ReleaseButton);
             float minSize = 48 / root.GetComponentInParent<Canvas>().scaleFactor;
-            var keyCenter = cabinet.ReleaseButton.position + Vector3.up * .045f;
+            var keyCenter = cabinet.ReleaseButton.TransformPoint(Vector3.up * .05f);
             var keySide = camera.WorldToViewportPoint(keyCenter + camera.transform.right);
             float unitsPerMetre = root.rect.width * (keySide.x - releasePoint.x);
             float keySize = Mathf.Max(minSize, .20f * unitsPerMetre);
@@ -78,8 +78,8 @@ namespace RockBalancing
 
         public void ShowControls() => cabinet.ShowControls(stickOffset, raising, lowering, ReleaseButton.IsPressed);
 
-        static Vector2 ScreenAnchor(Camera camera, Vector3 key) =>
-            camera.WorldToViewportPoint(key + Vector3.up * .045f);
+        static Vector2 ScreenAnchor(Camera camera, Transform key) =>
+            camera.WorldToViewportPoint(key.TransformPoint(Vector3.up * .05f));
 
         void Place(RectTransform rect, Vector2 anchor, float size, float left, float right)
         {

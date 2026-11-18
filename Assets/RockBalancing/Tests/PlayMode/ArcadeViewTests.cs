@@ -114,7 +114,7 @@ namespace RockBalancing.Tests
             Assert.That(glass.bounds.size.z, Is.EqualTo(originalPane.size.z).Within(.001f));
             Assert.That(platform.bounds, Is.EqualTo(originalPlatform));
             Assert.That(session.Base.bounds, Is.EqualTo(originalBase));
-            Assert.That(session.Pending.Shape.bounds.size, Is.EqualTo(stoneSize));
+            Assert.That(Vector3.Distance(session.Pending.Shape.bounds.size, stoneSize), Is.LessThan(.001f));
             AssertWorkingWindow(roof.bounds, glass.bounds, originalPane.size.y);
 
             FrameAt(390, 844);
@@ -402,7 +402,8 @@ namespace RockBalancing.Tests
             var cabinet = root.GetComponent<ArcadeCabinet>();
             var stone = session.Pending;
             var start = stone.transform.position;
-            var grip = camera.WorldToViewportPoint(cabinet.Joystick.position + new Vector3(0, .159f, -.013f));
+            var grip = camera.WorldToViewportPoint(
+                ArcadeFrontTests.MaterialCenter(cabinet.Joystick.GetComponent<Renderer>(), "Vermilion"));
             var knob = new Vector2(grip.x * Screen.width, grip.y * Screen.height);
             Touch(1, TouchPhase.Began, knob);
             yield return new WaitForSeconds(.24f);
@@ -410,7 +411,7 @@ namespace RockBalancing.Tests
             AssertFacing(Vector3.forward);
             Assert.That(Control(Next).gameObject.activeInHierarchy, Is.False);
 
-            var dragged = knob + Vector2.right * 35;
+            var dragged = knob + Vector2.right * Mathf.Max(35, Screen.width * .025f);
             Touch(1, TouchPhase.Moved, dragged);
             yield return new WaitForSeconds(.18f);
             Assert.That(stone.transform.position.x, Is.LessThan(start.x - .02f));

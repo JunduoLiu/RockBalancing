@@ -7,7 +7,7 @@ namespace RockBalancing
 {
     public sealed class GameSession : MonoBehaviour
     {
-        const float SupplyClearance = .28f;
+        internal const float SupplyClearance = .28f;
         readonly List<Stone> stones = new List<Stone>();
         IStoneFactory factory;
         bool generating;
