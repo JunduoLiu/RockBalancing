@@ -210,7 +210,7 @@ namespace RockBalancing.Tests
             var side = blank + Vector2.right * (Screen.width * .1875f);
             var front = input.ViewCamera.transform.position;
             var center = StoneCenter();
-            var dragged = center + Vector2.down * Mathf.Max(24, .024f * Screen.height);
+            var dragged = center + Vector2.down * Mathf.Max(40, .05f * Screen.height);
 
             yield return Touch(UnityEngine.InputSystem.TouchPhase.Began, center);
             yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, dragged);

@@ -126,6 +126,16 @@ namespace RockBalancing.Tests
             Assert.That(cabinet.LimitTravel(session.Pending, farCorner), Is.EqualTo(initialReach));
             AssertWorkingWindow(roof.bounds, glass.bounds, originalPane.size.y);
 
+            var diagonal = ScreenPoint(.36125f, .55f);
+            yield return BeginOrbit(ScreenPoint(.08f, .55f), diagonal);
+            AssertFacing(new Vector3(1, 0, -1).normalized);
+            Assert.That(camera.WorldToViewportPoint(Vector3.up * (session.TowerTop() + .28f)).z,
+                Is.EqualTo(supplyDepth).Within(.01f));
+            AssertWorkingWindow(roof.bounds, glass.bounds, originalPane.size.y);
+            Touch(1, TouchPhase.Ended, diagonal);
+            yield return new WaitForSecondsRealtime(.55f);
+            AssertFacing(Vector3.forward);
+
             foreach (var stone in session.Stones.Where(stone => stone.Released))
                 stone.Body.position += Vector3.right * 3;
             for (int frame = 0; frame < 30 && session.TowerTop() >= session.BaseTop + .001f; frame++)
@@ -410,8 +420,8 @@ namespace RockBalancing.Tests
                     AssertInView(deckPosition);
                     AssertInView(top);
                     AssertInView(lowerEdge);
-                    Assert.That(camera.WorldToViewportPoint(lowerEdge).y - camera.WorldToViewportPoint(top).y,
-                        Is.GreaterThan(.035f));
+                    float gap = camera.WorldToViewportPoint(lowerEdge).y - camera.WorldToViewportPoint(top).y;
+                    Assert.That(gap * size.y, Is.GreaterThan(12f));
                     AssertWorkingWindow(roof.bounds, pane.bounds, originalHeight);
                 }
 

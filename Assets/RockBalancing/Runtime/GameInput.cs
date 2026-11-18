@@ -273,7 +273,6 @@ namespace RockBalancing
             active = !blocked;
             selected = Session.Pending;
             rotating = false;
-            if (Cabinet != null && IsOperating) { active = false; return; }
             if (active && ObservationHit(ViewCamera.ScreenPointToRay(position), out var hit))
             {
                 var stone = hit.collider.GetComponent<Stone>();
@@ -282,7 +281,7 @@ namespace RockBalancing
             }
             if (Cabinet != null)
             {
-                active = active && !blocked && (!rotating || CanAdjust);
+                active = active && !blocked && (rotating ? CanAdjust : !IsOperating);
                 orbitingCabinet = active && !rotating;
             }
             if (StepRotationTarget != null)
