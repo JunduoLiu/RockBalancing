@@ -19,11 +19,12 @@ namespace RockBalancing
         Vector3 stepAxis;
         Vector2 stepTangent;
         float stepTravel, blockedStepDirection;
-        internal void SetStepRotation(bool enabled)
+        internal void SetRotationMode(float step)
         {
-            if (Cabinet == null || StepRotationEnabled == enabled) return;
+            if (Cabinet == null) return;
             CancelGesture();
-            StepRotationEnabled = enabled;
+            StepRotationEnabled = step > 0;
+            if (StepRotationEnabled) RotationStepDegrees = step;
         }
         public bool IsOperating => Adjusting || (active && rotating) || keyboardHeld;
         internal bool ShowCabinetArrows => !Modal && !IsOperating;

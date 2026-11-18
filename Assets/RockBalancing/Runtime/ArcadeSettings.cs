@@ -20,31 +20,40 @@ namespace RockBalancing
                 new Color(.1f, .15f, .16f, .85f), true).gameObject;
             dialog = view.Panel(panel.transform, "Settings dialog", Vector2.one * .5f,
                 Vector2.one * .5f, paper, true);
-            view.Label(dialog, "设置", new Vector2(.07f, .67f), new Vector2(.93f, .94f), 24);
+            view.Label(dialog, "设置", new Vector2(.07f, .73f), new Vector2(.93f, .94f), 24);
+            view.Label(dialog, "旋转", new Vector2(.07f, .58f), new Vector2(.93f, .73f), 17, TextAnchor.MiddleLeft);
 
-            var row = view.Panel(dialog, "刻度旋转", new Vector2(.07f, .36f), new Vector2(.93f, .65f),
-                new Color(.89f, .91f, .87f), true);
-            view.Label(row, "刻度旋转", new Vector2(.06f, 0), new Vector2(.74f, 1),
-                18, TextAnchor.MiddleLeft);
-            var state = view.Panel(row, "Rotation setting state", new Vector2(.76f, .12f),
-                new Vector2(.95f, .88f), paper, false);
-            var stateBox = state.GetComponent<Image>();
-            var stateText = view.Label(state, "关", Vector2.zero, Vector2.one, 16);
-
-            var toggle = row.gameObject.AddComponent<Toggle>();
-            toggle.targetGraphic = row.GetComponent<Image>();
-            toggle.isOn = input.StepRotationEnabled;
-            UpdateState(toggle.isOn);
-            toggle.onValueChanged.AddListener(UpdateState);
-            void UpdateState(bool enabled)
+            float configuredStep = Mathf.Clamp(input.RotationStepDegrees, 1, 179);
+            var modes = configuredStep == 15 || configuredStep == 30
+                ? new[] { 0f, 15f, 30f }
+                : new[] { 0f, 15f, 30f, configuredStep };
+            var buttons = new Button[modes.Length];
+            float width = .86f / modes.Length;
+            for (int i = 0; i < modes.Length; i++)
             {
-                input.SetStepRotation(enabled);
-                stateText.text = enabled ? "开" : "关";
-                stateText.color = enabled ? Color.white : ink;
-                stateBox.color = enabled ? new Color(.17f, .42f, .34f) : paper;
+                int choice = i;
+                string name = modes[i] == 0 ? "自由" : $"{modes[i]:0.##}°";
+                float left = .07f + i * width;
+                buttons[i] = view.ButtonAt(dialog, name, new Vector2(left + .008f, .36f),
+                    new Vector2(left + width - .008f, .57f), () => SelectMode(choice));
+                buttons[i].GetComponentInChildren<Text>().resizeTextMaxSize = 18;
             }
 
-            view.ButtonAt(dialog, "完成", new Vector2(.24f, .07f), new Vector2(.76f, .33f), () => Show(false));
+            SelectMode(0);
+            void SelectMode(int selection)
+            {
+                input.SetRotationMode(modes[selection]);
+                for (int i = 0; i < buttons.Length; i++)
+                {
+                    bool selected = i == selection;
+                    buttons[i].targetGraphic.color = selected ? new Color(.17f, .42f, .34f) : new Color(.89f, .91f, .87f);
+                    var label = buttons[i].GetComponentInChildren<Text>();
+                    label.color = selected ? Color.white : ink;
+                    label.fontStyle = selected ? FontStyle.Bold : FontStyle.Normal;
+                }
+            }
+
+            view.ButtonAt(dialog, "完成", new Vector2(.24f, .07f), new Vector2(.76f, .30f), () => Show(false));
             panel.SetActive(false);
         }
 

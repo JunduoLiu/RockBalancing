@@ -45,11 +45,6 @@ namespace RockBalancing.Tests
         [UnityTest]
         public IEnumerator SettingsPreservePoseAndRingsLastUntilTheStoneIsLetGo()
         {
-            yield return Tap(ControlPoint("设置"));
-            var toggle = Control("刻度旋转").GetComponent<Toggle>();
-            Assert.That(toggle.isOn, Is.False, "Free rotation is the initial setting.");
-            yield return Tap(ControlPoint("完成"));
-
             var center = StoneCenter();
             yield return Tap(center, Vector2.right * 27);
             var freePose = stone.transform.rotation;
@@ -76,15 +71,14 @@ namespace RockBalancing.Tests
         [UnityTest]
         public IEnumerator OneDragCrossesAndReversesMultipleStepsOnEachCabinetAxis()
         {
-            yield return SetStepMode();
             var center = StoneCenter();
             var diagonalGrab = (Vector2)input.ViewCamera.WorldToScreenPoint(
                 stone.transform.position + new Vector3(-.016f, .017f, 0));
             float distance = Mathf.Max(40, .05f * Screen.height);
 
-            foreach (float step in new[] { 15f, 30f })
+            foreach (var (mode, step) in new[] { ("15°", 15f), ("30°", 30f) })
             {
-                input.RotationStepDegrees = step;
+                yield return SetStepMode(mode);
                 yield return DragAndReverse(center, Vector2.down * distance, Vector3.right, step);
                 yield return DragAndReverse(center, Vector2.left * distance, Vector3.up, step);
                 yield return DragAndReverse(diagonalGrab, new Vector2(1, -1).normalized * distance, Vector3.forward, step);
@@ -147,15 +141,57 @@ namespace RockBalancing.Tests
         }
 
         [UnityTest]
-        public IEnumerator DeveloperStepSizeAppliesAndReturningToFreePreservesThePose()
+        public IEnumerator ALongDragStopsAtAnIntermediateCollisionAndCanReverse()
         {
-            input.RotationStepDegrees = 30;
+            var factory = new StoneFactory(shapes: new StoneShapeSettings { FlatProbability = 1 },
+                nextSeed: () => 123, arcade: true);
+            session.Initialize(factory, session.Base, session.Ground);
+            stone = session.Pending;
+            yield return null;
+            yield return SetStepMode("30°");
+
+            float BottomAt(float degrees) => stone.OwnedMesh.vertices
+                .Min(vertex => (Quaternion.AngleAxis(degrees, Vector3.right) * vertex).y);
+            float firstTick = BottomAt(30);
+            float blockedTick = BottomAt(60);
+            float clearance = (firstTick + blockedTick) * .5f;
+            Assert.That(firstTick - blockedTick, Is.GreaterThan(.004f));
+            Assert.That(BottomAt(180), Is.GreaterThan(clearance + .002f), "The far endpoint must clear the base.");
+            var position = new Vector3(0, session.BaseTop - clearance, 0);
+            Assert.That(session.Adjust(stone, position, Quaternion.identity), Is.True);
+            yield return null;
+
+            var center = StoneCenter();
+            var drag = Vector2.down * Mathf.Max(40, .05f * Screen.height);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Began, center);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, center + drag * 5);
+            ExpectPose(Quaternion.AngleAxis(30, Vector3.right));
+            Assert.That(session.Feedback, Is.Not.Empty);
+
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, center + drag * 5.2f);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, center + drag * 4.35f);
+            ExpectPose(Quaternion.identity);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Ended, center + drag * 4.35f);
+            Assert.That(stone.transform.position, Is.EqualTo(position));
+            Assert.That(session.Pending, Is.SameAs(stone));
+        }
+
+        [UnityTest]
+        public IEnumerator SwitchingStepSizesAndReturningToFreePreservesThePose()
+        {
             yield return SetStepMode();
-            yield return Tap(StoneCenter(), Vector2.down * Mathf.Max(40, .05f * Screen.height));
-            var stepPose = Quaternion.AngleAxis(30, Vector3.right);
+            var drag = Vector2.down * Mathf.Max(40, .05f * Screen.height);
+            yield return Tap(StoneCenter(), drag);
+            var stepPose = Quaternion.AngleAxis(15, Vector3.right);
             ExpectPose(stepPose);
 
-            yield return SetStepMode();
+            yield return SetStepMode("30°");
+            ExpectPose(stepPose);
+            yield return Tap(StoneCenter(), drag);
+            stepPose = Quaternion.AngleAxis(45, Vector3.right);
+            ExpectPose(stepPose);
+
+            yield return SetStepMode("自由");
             ExpectPose(stepPose);
             var center = StoneCenter();
             yield return Touch(UnityEngine.InputSystem.TouchPhase.Began, center);
@@ -206,10 +242,10 @@ namespace RockBalancing.Tests
             Assert.That(session.Pending, Is.SameAs(stone));
         }
 
-        IEnumerator SetStepMode()
+        IEnumerator SetStepMode(string mode = "15°")
         {
             yield return Tap(ControlPoint("设置"));
-            yield return Tap(ControlPoint("刻度旋转"));
+            yield return Tap(ControlPoint(mode));
             yield return Tap(ControlPoint("完成"));
         }
 
