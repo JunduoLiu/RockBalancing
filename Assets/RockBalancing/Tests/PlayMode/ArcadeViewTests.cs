@@ -52,181 +52,540 @@ namespace RockBalancing.Tests
         }
 
         [UnityTest]
-        public IEnumerator BothScreenEdgesReachAdjacentWindowsAndWrapAroundTheSameStone()
+        public IEnumerator FrontPerspectiveAimsAtTheStandardSupplyPoint()
+        {
+            FrameAt(390, 844);
+            yield return null;
+            yield return null;
+            AssertFacing(Vector3.forward);
+            Assert.That(camera.orthographic, Is.False);
+
+            var supplyPoint = Vector3.up * (session.BaseTop + .28f);
+            var center = camera.WorldToViewportPoint(supplyPoint);
+            Assert.That(center.x, Is.EqualTo(.5f).Within(.001f));
+            Assert.That(center.y, Is.EqualTo(.5f).Within(.001f));
+            var near = camera.WorldToViewportPoint(supplyPoint + Vector3.forward * .4f + Vector3.right * .1f);
+            var far = camera.WorldToViewportPoint(supplyPoint + Vector3.back * .4f + Vector3.right * .1f);
+            Assert.That(.5f - near.x, Is.GreaterThan(.5f - far.x));
+        }
+
+        [UnityTest]
+        public IEnumerator TheOriginalWorkingWindowFollowsTheTowerUpAndBackDownAcrossScreenSizes()
+        {
+            FrameAt(900, 430);
+            session.Initialize(new StackableStones(), session.Base, session.Ground);
+            yield return null;
+            yield return null;
+
+            var roof = Part("Roof");
+            var glass = Part("Glass Front");
+            var platform = Part("Cabinet");
+            var cabinet = root.GetComponent<ArcadeCabinet>();
+            var originalPane = glass.bounds;
+            var originalRoof = roof.bounds;
+            var originalPlatform = platform.bounds;
+            var originalBase = session.Base.bounds;
+            var stoneSize = session.Pending.Shape.bounds.size;
+            var farCorner = new Vector3(8, 0, -8);
+            var initialReach = cabinet.LimitTravel(session.Pending, farCorner);
+            float supplyDepth = camera.WorldToViewportPoint(Vector3.up * (session.BaseTop + .28f)).z;
+            var startPosition = camera.transform.position;
+            float landscapeFov = camera.fieldOfView;
+            AssertWorkingWindow(roof.bounds, glass.bounds, originalPane.size.y);
+
+            for (int i = 0; i < 4; i++)
+            {
+                var stone = session.Pending;
+                Assert.That(session.Adjust(stone, Vector3.up * (session.TowerTop() + .12f), Quaternion.identity), Is.True);
+                Assert.That(session.Release(stone), Is.True);
+                yield return new WaitForSeconds(.40f);
+            }
+            yield return new WaitForSeconds(.65f);
+
+            float rise = session.TowerTop() - session.BaseTop;
+            Assert.That(rise, Is.GreaterThan(.7f));
+            Assert.That(camera.transform.position.y - startPosition.y, Is.EqualTo(rise).Within(.01f));
+            Assert.That(camera.fieldOfView, Is.EqualTo(landscapeFov).Within(.001f));
+            Assert.That(camera.WorldToViewportPoint(Vector3.up * (session.TowerTop() + .28f)).z,
+                Is.EqualTo(supplyDepth).Within(.01f));
+            Assert.That(glass.bounds.size.y - originalPane.size.y, Is.EqualTo(rise).Within(.02f));
+            Assert.That(glass.bounds.min.y, Is.EqualTo(originalPane.min.y).Within(.001f));
+            Assert.That(glass.bounds.size.x, Is.EqualTo(originalPane.size.x).Within(.001f));
+            Assert.That(glass.bounds.size.z, Is.EqualTo(originalPane.size.z).Within(.001f));
+            Assert.That(platform.bounds, Is.EqualTo(originalPlatform));
+            Assert.That(session.Base.bounds, Is.EqualTo(originalBase));
+            Assert.That(Vector3.Distance(session.Pending.Shape.bounds.size, stoneSize), Is.LessThan(.001f));
+            AssertWorkingWindow(roof.bounds, glass.bounds, originalPane.size.y);
+
+            FrameAt(390, 844);
+            yield return null;
+            yield return null;
+            var highPosition = camera.transform.position;
+            float portraitFov = camera.fieldOfView;
+            Assert.That(portraitFov, Is.GreaterThan(landscapeFov));
+            Assert.That(cabinet.LimitTravel(session.Pending, farCorner), Is.EqualTo(initialReach));
+            AssertWorkingWindow(roof.bounds, glass.bounds, originalPane.size.y);
+
+            var diagonal = ScreenPoint(.36125f, .55f);
+            yield return BeginOrbit(ScreenPoint(.08f, .55f), diagonal);
+            AssertFacing(new Vector3(1, 0, -1).normalized);
+            Assert.That(camera.WorldToViewportPoint(Vector3.up * (session.TowerTop() + .28f)).z,
+                Is.EqualTo(supplyDepth).Within(.01f));
+            AssertWorkingWindow(roof.bounds, glass.bounds, originalPane.size.y);
+            Touch(1, TouchPhase.Ended, diagonal);
+            yield return new WaitForSecondsRealtime(.55f);
+            AssertFacing(Vector3.forward);
+
+            foreach (var stone in session.Stones.Where(stone => stone.Released))
+                stone.Body.position += Vector3.right * 3;
+            for (int frame = 0; frame < 30 && session.TowerTop() >= session.BaseTop + .001f; frame++)
+                yield return new WaitForFixedUpdate();
+            Assert.That(session.TowerTop(), Is.EqualTo(session.BaseTop).Within(.001f));
+            yield return null;
+            Assert.That(camera.transform.position.y, Is.InRange(startPosition.y + .05f, highPosition.y));
+            Assert.That(session.Pending.transform.position.y, Is.LessThan(session.BaseTop + .65f),
+                "The lift range should shrink with the tower while the camera is still above its resting position.");
+            yield return new WaitForSeconds(1);
+
+            Assert.That(Vector3.Distance(camera.transform.position, startPosition), Is.LessThan(.005f));
+            Assert.That(camera.fieldOfView, Is.EqualTo(portraitFov).Within(.001f));
+            Assert.That(roof.bounds.center.y, Is.EqualTo(originalRoof.center.y).Within(.005f));
+            Assert.That(glass.bounds.size.y, Is.EqualTo(originalPane.size.y).Within(.005f));
+            Assert.That(platform.bounds, Is.EqualTo(originalPlatform));
+            Assert.That(session.Base.bounds, Is.EqualTo(originalBase));
+            Assert.That(cabinet.LimitTravel(session.Pending, farCorner), Is.EqualTo(initialReach));
+            AssertInView(session.Pending.transform.position);
+            AssertWorkingWindow(roof.bounds, glass.bounds, originalPane.size.y);
+        }
+
+        Renderer Part(string name) =>
+            root.GetComponentsInChildren<Renderer>().Single(renderer => renderer.name == name);
+
+        [UnityTest]
+        public IEnumerator AHighTowerCollapseKeepsTheWorkingWindowInFrameAndRetainsAUsableReleaseHeight()
+        {
+            FrameAt(900, 430);
+            session.Initialize(new StackableStones(), session.Base, session.Ground);
+            yield return null;
+            var roof = Part("Roof");
+            var glass = Part("Glass Front");
+            float originalHeight = glass.bounds.size.y;
+
+            for (int i = 0; i < 11; i++)
+            {
+                var next = session.Pending;
+                next.Body.constraints = RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezePositionZ |
+                    RigidbodyConstraints.FreezeRotation;
+                Assert.That(session.Adjust(next, Vector3.up * (session.TowerTop() + .11f), Quaternion.identity), Is.True);
+                Assert.That(session.Release(next), Is.True);
+                yield return new WaitForSeconds(.35f);
+            }
+            yield return new WaitForSeconds(.65f);
+            Assert.That(session.TowerTop() - session.BaseTop, Is.GreaterThan(2f));
+            AssertWorkingWindow(roof.bounds, glass.bounds, originalHeight);
+
+            var pending = session.Pending;
+            var clearOfTower = new Vector3(.43f, pending.transform.position.y, -.42f);
+            Assert.That(session.Adjust(pending, clearOfTower, pending.transform.rotation), Is.True);
+            var selectedRelease = new Vector3(clearOfTower.x, session.BaseTop + .49f, clearOfTower.z);
+            Assert.That(session.Adjust(pending, selectedRelease, pending.transform.rotation), Is.True);
+            foreach (var released in session.Stones.Where(stone => stone.Released))
+            {
+                released.Body.constraints = RigidbodyConstraints.None;
+                released.Body.position += Vector3.right * 3;
+            }
+
+            float end = Time.unscaledTime + .9f;
+            int samples = 0;
+            while (Time.unscaledTime < end)
+            {
+                yield return null;
+                AssertWorkingWindow(roof.bounds, glass.bounds, originalHeight);
+                Assert.That(pending.transform.position, Is.EqualTo(selectedRelease));
+                samples++;
+            }
+            Assert.That(samples, Is.GreaterThan(4));
+            Assert.That(session.TowerTop(), Is.EqualTo(session.BaseTop).Within(.001f));
+            Assert.That(glass.bounds.size.y, Is.EqualTo(originalHeight).Within(.01f));
+        }
+
+        [UnityTest]
+        public IEnumerator ArcadeRecordKeepsTheHighestStableHeightUntilRestart()
+        {
+            session.Initialize(new StackableStones(), session.Base, session.Ground);
+            yield return null;
+            var stone = session.Pending;
+            Assert.That(session.Release(stone), Is.True);
+            yield return new WaitForSeconds(.40f);
+            Assert.That(session.CurrentHeightMm, Is.GreaterThan(180));
+            Assert.That(session.ArcadeHighestStableHeightMm, Is.Zero, "A settling tower is not a record.");
+            yield return new WaitForSeconds(1f);
+
+            int record = session.CurrentHeightMm;
+            Assert.That(session.ArcadeHighestStableHeightMm, Is.EqualTo(record));
+            stone.Body.position += Vector3.right * 3;
+            yield return new WaitForSeconds(.20f);
+            Assert.That(session.CurrentHeightMm, Is.Zero);
+            Assert.That(session.ArcadeHighestStableHeightMm, Is.EqualTo(record));
+
+            session.Restart();
+            Assert.That(session.ArcadeHighestStableHeightMm, Is.Zero);
+        }
+
+        void AssertWorkingWindow(Bounds roof, Bounds pane, float originalHeight)
+        {
+            foreach (float x in new[] { roof.min.x, roof.max.x })
+                foreach (float z in new[] { roof.min.z, roof.max.z })
+                    AssertInView(new Vector3(x, roof.max.y, z));
+            foreach (float x in new[] { pane.min.x, pane.max.x })
+                AssertInView(new Vector3(x, pane.max.y - originalHeight, pane.center.z));
+        }
+
+        [UnityTest]
+        public IEnumerator ABlankDragCirclesTheCabinetAtContinuousElevationWithNoFaceArrows()
         {
             var stone = session.Pending;
             var position = stone.transform.position;
             var rotation = stone.transform.rotation;
-            var rightEdge = Control(Next);
-            Assert.That(Point(rightEdge).x, Is.GreaterThan(Screen.width * .8f));
-            Assert.That(Point(Control(Previous)).x, Is.LessThan(Screen.width * .2f));
-            foreach (var face in new[] { Vector3.left, Vector3.back, Vector3.right, Vector3.forward })
-            {
-                yield return Tap(Point(rightEdge));
-                AssertFacing(face);
-            }
-            yield return Tap(Point(Control(Previous)));
-            AssertFacing(Vector3.right);
-            yield return Tap(Point(rightEdge));
+            var supply = Vector3.up * (session.BaseTop + .28f);
+            float distance = Vector3.Distance(camera.transform.position, supply);
+            float fieldOfView = camera.fieldOfView;
+            var blank = ScreenPoint(.05f, .55f);
+            yield return Tap(blank);
             AssertFacing(Vector3.forward);
+            yield return Tap(ScreenPoint(.95f, .55f));
+            AssertFacing(Vector3.forward);
+
+            Touch(1, TouchPhase.Began, blank);
+            yield return null;
+            yield return null;
+            var point = blank + Vector2.up * (Screen.height * .12f);
+            Touch(1, TouchPhase.Moved, point);
+            yield return null;
+            yield return null;
+            AssertFacing(Vector3.forward);
+            Assert.That(Elevation(supply), Is.EqualTo(15f).Within(.1f));
+            var pitches = new[] { 14.12f, 12f, 9.88f, 9f, 9.88f, 12f, 14.12f, 15f };
+            for (int i = 0; i < pitches.Length; i++)
+            {
+                Touch(1, TouchPhase.Moved, point += Vector2.right * (Screen.width * .09375f));
+                yield return null;
+                yield return null;
+                var face = Quaternion.AngleAxis(45 * (i + 1), Vector3.up) * Vector3.forward;
+                AssertFacing(face);
+                Assert.That(Elevation(supply), Is.EqualTo(pitches[i]).Within(.15f));
+                Assert.That(Vector3.Distance(camera.transform.position, supply), Is.EqualTo(distance).Within(.002f));
+                Assert.That(camera.fieldOfView, Is.EqualTo(fieldOfView).Within(.001f));
+                Assert.That(camera.orthographic, Is.False);
+            }
+            Touch(1, TouchPhase.Ended, point);
+            yield return null;
+            Assert.That(root.GetComponentsInChildren<RectTransform>(true).Any(rect => rect.name == Next || rect.name == Previous),
+                Is.False);
             Assert.That(session.Pending, Is.SameAs(stone));
             Assert.That(stone.transform.position, Is.EqualTo(position));
             Assert.That(stone.transform.rotation, Is.EqualTo(rotation));
         }
 
+        float Elevation(Vector3 at) => Vector3.Angle(camera.transform.position - at,
+            Vector3.ProjectOnPlane(camera.transform.position - at, Vector3.up));
+
+        static Vector2 ScreenPoint(float x, float y) => new Vector2(Screen.width * x, Screen.height * y);
+
         [UnityTest]
-        public IEnumerator ASecondFingerCannotTurnWhileAnyFrontAdjustmentIsHeld()
+        public IEnumerator ASecondFingerCannotOrbitWhileAFrontAdjustmentIsHeld()
         {
-            var leftEdge = Control(Previous);
-            var rightEdge = Control(Next);
-            var left = Point(leftEdge);
-            var right = Point(rightEdge);
             var stone = session.Pending;
+            var blank = ScreenPoint(.08f, .55f);
+            var moved = ScreenPoint(.26f, .55f);
             foreach (var control in new[] { "Move", "Lift", "Lower", "Stone" })
             {
                 Vector2 point = control == "Stone" ? camera.WorldToScreenPoint(stone.transform.position) : Point(Control(control));
                 Touch(1, TouchPhase.Began, point);
                 yield return null;
                 yield return null;
-                Assert.That(leftEdge.gameObject.activeInHierarchy || rightEdge.gameObject.activeInHierarchy,
-                    Is.False, $"Holding {control} should immediately hide both arrows.");
-                yield return Tap(left, 2);
-                yield return Tap(right, 3);
-                AssertFacing(Vector3.forward);
-                Assert.That(session.Pending, Is.SameAs(stone));
-
-                // A finger that landed at the edge while the arrow was hidden
-                // cannot navigate by lifting after the primary operation ends.
-                Touch(4, TouchPhase.Began, right);
+                Touch(2, TouchPhase.Began, blank);
                 yield return null;
+                Touch(2, TouchPhase.Moved, moved);
+                yield return null;
+                yield return null;
+                AssertFacing(Vector3.forward);
+
                 Touch(1, TouchPhase.Ended, point);
                 yield return null;
-                yield return null;
-                Assert.That(leftEdge.gameObject.activeInHierarchy && rightEdge.gameObject.activeInHierarchy, Is.True);
-                Touch(4, TouchPhase.Ended, right);
+                Touch(2, TouchPhase.Moved, moved + Vector2.right * 30);
                 yield return null;
                 yield return null;
                 AssertFacing(Vector3.forward);
+                Touch(2, TouchPhase.Ended, moved + Vector2.right * 30);
+                yield return null;
+                yield return null;
+                Assert.That(session.Pending, Is.SameAs(stone));
             }
-            yield return Tap(right);
-            AssertFacing(Vector3.left);
+
+            yield return BeginOrbit(blank, moved);
+            Assert.That(Azimuth(), Is.GreaterThan(80f));
+            Touch(1, TouchPhase.Ended, moved);
+            yield return null;
         }
 
         [UnityTest]
-        public IEnumerator ObservationWindowsLeaveTheStoneUntouchedAndCanFollowItsRelease()
+        public IEnumerator OrbitAndReturnDiscardConsolePressesUntilAFreshFrontPress()
         {
             keyboard = InputSystem.AddDevice<Keyboard>();
             keyboard.MakeCurrent();
             var stone = session.Pending;
-            var position = stone.transform.position;
-            var rotation = stone.transform.rotation;
-            var stick = Point(Control("Move"));
-            var lift = Point(Control("Lift"));
-            var lower = Point(Control("Lower"));
-            var release = Point(Control("Release"));
-            var next = Point(Control(Next));
-
-            foreach (var face in new[] { Vector3.left, Vector3.back, Vector3.right })
+            var blank = ScreenPoint(.08f, .60f);
+            var side = ScreenPoint(.16f, .60f);
+            foreach (var name in new[] { "Move", "Lift", "Lower", "Release" })
             {
-                yield return Tap(next);
-                AssertFacing(face);
-                yield return Drag(stick, new Vector2(30, 30));
-                yield return Drag(lift, Vector2.zero);
-                yield return Drag(lower, Vector2.zero);
-                yield return Drag(camera.WorldToScreenPoint(position), Vector2.right * 44);
-                yield return Tap(release);
-                InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.W, Key.UpArrow));
-                yield return null;
-                yield return new WaitForSeconds(.1f);
-                InputSystem.QueueStateEvent(keyboard, new KeyboardState());
-                yield return null;
-                Assert.That(session.Pending, Is.SameAs(stone));
-                Assert.That(stone.transform.position, Is.EqualTo(position));
-                Assert.That(stone.transform.rotation, Is.EqualTo(rotation));
-                Assert.That(stone.Released, Is.False);
+                foreach (bool pressWhileReturning in new[] { false, true })
+                {
+                    var position = stone.transform.position;
+                    var rotation = stone.transform.rotation;
+                    var offset = name == "Move" ? Vector2.right * 30 : Vector2.zero;
+                    yield return BeginOrbit(blank, side);
+                    Assert.That(Azimuth(), Is.EqualTo(38.4f).Within(.2f));
+
+                    if (pressWhileReturning)
+                    {
+                        Touch(1, TouchPhase.Ended, side);
+                        yield return new WaitForSecondsRealtime(.10f);
+                        Assert.That(Azimuth(), Is.InRange(10f, 38f));
+                    }
+
+                    string part = name == "Move" ? "Joystick" : "Button " + name;
+                    string material = name == "Move" || name == "Release" ? "Vermilion" : "Mint";
+                    var control = VisibleControlPoint(part, material);
+                    Touch(2, TouchPhase.Began, control);
+                    InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.W, Key.UpArrow));
+                    yield return null;
+                    if (offset != Vector2.zero)
+                    {
+                        Touch(2, TouchPhase.Moved, control + offset);
+                        yield return null;
+                    }
+                    if (!pressWhileReturning)
+                    {
+                        Assert.That(Azimuth(), Is.EqualTo(38.4f).Within(.2f));
+                        Touch(1, TouchPhase.Ended, side);
+                    }
+
+                    yield return new WaitForSecondsRealtime(.65f);
+                    AssertFacing(Vector3.forward);
+                    Assert.That(stone.transform.position, Is.EqualTo(position));
+                    Assert.That(stone.transform.rotation, Is.EqualTo(rotation));
+                    Assert.That(stone.Released, Is.False);
+
+                    Touch(2, TouchPhase.Ended, control + offset);
+                    InputSystem.QueueStateEvent(keyboard, new KeyboardState());
+                    yield return null;
+                    yield return null;
+                    Assert.That(stone.Released, Is.False);
+                }
+
+                var before = stone.transform.position;
+                var point = Point(Control(name));
+                yield return Drag(point, name == "Move" ? Vector2.right * 32 : Vector2.zero);
+                if (name == "Move") Assert.That(stone.transform.position.x, Is.LessThan(before.x - .01f));
+                if (name == "Lift") Assert.That(stone.transform.position.y, Is.GreaterThan(before.y + .02f));
+                if (name == "Lower") Assert.That(stone.transform.position.y, Is.LessThan(before.y - .02f));
+                if (name == "Release") Assert.That(stone.Released, Is.True);
             }
-
-            yield return Tap(next);
-            AssertFacing(Vector3.forward);
-            Touch(1, TouchPhase.Began, release);
-            yield return null;
-            Touch(1, TouchPhase.Ended, release);
-            yield return null;
-            Assert.That(stone.Released, Is.True);
-            var releaseHeight = stone.transform.position.y;
-
-            yield return Tap(next);
-            AssertFacing(Vector3.left);
-            Assert.That(session.Pending, Is.Not.SameAs(stone));
-            yield return new WaitForFixedUpdate();
-            Assert.That(stone.transform.position.y, Is.LessThan(releaseHeight));
-            var fallingStone = camera.WorldToViewportPoint(stone.transform.position);
-            Assert.That(fallingStone.x, Is.InRange(.01f, .99f));
-            Assert.That(fallingStone.y, Is.InRange(.01f, .99f));
         }
 
         [UnityTest]
-        public IEnumerator PhoneFramingShowsTheFrontConsoleAndKeepsTheGapClearThroughBothSideWindows()
+        public IEnumerator AFormerConsoleHotspotCanRegrabTheReturningView()
         {
-            FrameAt(390, 844);
+            FrameAt(430, 900);
             yield return null;
-            var cabinet = root.GetComponent<ArcadeCabinet>();
-            var controls = new[] { cabinet.Joystick, cabinet.LiftButton, cabinet.LowerButton, cabinet.ReleaseButton };
-            foreach (var control in controls)
-                AssertInView(control.GetComponentInChildren<Renderer>().bounds.center);
-            var claw = cabinet.GetComponentsInChildren<Renderer>().Single(renderer => renderer.name == "Claw head");
-            AssertInView(claw.bounds.center);
-            var top = session.Base.bounds.center + Vector3.up * session.Base.bounds.extents.y;
-            AssertInView(top);
+            var oldReleasePoint = VisibleControlPoint("Button Release", "Vermilion");
+            var blank = ScreenPoint(.08f, .60f);
+            var rear = blank + Vector2.right * (Screen.width * .375f);
+            yield return BeginOrbit(blank, rear);
+            AssertFacing(Vector3.back);
+            Touch(1, TouchPhase.Ended, rear);
+            yield return new WaitForSecondsRealtime(.07f);
 
-            foreach (var arrow in new[] { Next, Previous })
+            Touch(2, TouchPhase.Began, oldReleasePoint);
+            yield return null;
+            yield return null;
+            float grabbed = Azimuth();
+            Assert.That(Mathf.Abs(grabbed), Is.GreaterThan(80f));
+            yield return new WaitForSecondsRealtime(.2f);
+            Assert.That(Azimuth(), Is.EqualTo(grabbed).Within(.1f));
+
+            var moved = oldReleasePoint + Vector2.right * (Screen.width * .05f);
+            Touch(2, TouchPhase.Moved, moved);
+            yield return null;
+            yield return null;
+            Assert.That(Mathf.DeltaAngle(grabbed, Azimuth()), Is.EqualTo(24f).Within(.2f));
+            Touch(2, TouchPhase.Ended, moved);
+        }
+
+        [UnityTest]
+        public IEnumerator TheVisibleReleaseButtonCannotRegrabOrActDuringReturn()
+        {
+            FrameAt(430, 900);
+            yield return null;
+            var stone = session.Pending;
+            var front = VisibleControlPoint("Button Release", "Vermilion");
+            var blank = ScreenPoint(.08f, .60f);
+            var side = blank + Vector2.right * (Screen.width * .125f);
+            yield return BeginOrbit(blank, side);
+            Touch(1, TouchPhase.Ended, side);
+            yield return new WaitForSecondsRealtime(.07f);
+            var returning = VisibleControlPoint("Button Release", "Vermilion");
+            Assert.That(Mathf.Abs(Azimuth()), Is.GreaterThan(25f));
+            Assert.That(Vector2.Distance(returning, front), Is.GreaterThan(Screen.width * .04f));
+
+            Touch(2, TouchPhase.Began, returning);
+            yield return new WaitForSecondsRealtime(.55f);
+            AssertFacing(Vector3.forward);
+            Touch(2, TouchPhase.Moved, front);
+            yield return null;
+            Touch(2, TouchPhase.Ended, front);
+            yield return null;
+            Assert.That(stone.Released, Is.False);
+
+            yield return Tap(front, 3);
+            Assert.That(stone.Released, Is.True);
+        }
+
+        Vector2 VisibleControlPoint(string part, string material)
+        {
+            var center = ArcadeFrontTests.MaterialCenter(Part(part), material);
+            var point = camera.WorldToViewportPoint(center);
+            return ScreenPoint(point.x, point.y);
+        }
+
+        [UnityTest]
+        public IEnumerator BothDirectionsReturnByTheShorterArcAndAllowARegrab()
+        {
+            var front = camera.transform.position;
+            foreach (int direction in new[] { 1, -1 })
             {
-                yield return Tap(Point(Control(arrow)));
-                var frustum = GeometryUtility.CalculateFrustumPlanes(camera);
-                foreach (var control in controls)
-                    Assert.That(GeometryUtility.TestPlanesAABB(frustum, control.GetComponentInChildren<Renderer>().bounds),
-                        Is.False, $"{control.name} should be outside the side frame.");
+                var blank = ScreenPoint(direction > 0 ? .08f : .92f, .60f);
+                var beyondHalf = blank + Vector2.right * (direction * .44f * Screen.width);
+                yield return BeginOrbit(blank, beyondHalf);
+                float turn = Azimuth();
+                Assert.That(direction * turn, Is.InRange(-155f, -140f));
+
+                Touch(1, TouchPhase.Ended, beyondHalf);
+                yield return new WaitForSecondsRealtime(.11f);
+                float returning = Azimuth();
+                Assert.That(direction * returning, Is.InRange(direction * turn + 4f, -25f));
+
+                Touch(2, TouchPhase.Began, blank);
+                yield return null;
+                yield return null;
+                float grabbed = Azimuth();
+                Assert.That(direction * grabbed, Is.InRange(direction * returning - .5f, -12f));
+                Assert.That(Mathf.Abs(Mathf.DeltaAngle(returning, grabbed)), Is.LessThan(30f));
+                yield return new WaitForSecondsRealtime(.15f);
+                Assert.That(Azimuth(), Is.EqualTo(grabbed).Within(.1f));
+
+                var draggedAgain = blank + Vector2.right * (direction * .075f * Screen.width);
+                Touch(2, TouchPhase.Moved, draggedAgain);
+                yield return null;
+                yield return null;
+                Assert.That(Mathf.DeltaAngle(grabbed, Azimuth()), Is.EqualTo(direction * 36f).Within(.2f));
+                Touch(2, TouchPhase.Ended, draggedAgain);
+                yield return new WaitForSecondsRealtime(.65f);
+
+                AssertFacing(Vector3.forward);
+                Assert.That(Vector3.Distance(camera.transform.position, front), Is.LessThan(.001f));
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator ThePhoneAndLandscapeViewsKeepTheWorkingWindowAndConsoleInTheSamePlace()
+        {
+            session.Initialize(new StackableStones(), session.Base, session.Ground);
+            var roof = Part("Roof");
+            var pane = Part("Glass Front");
+            var console = Part("Console");
+            float originalHeight = pane.bounds.size.y;
+            var blank = ScreenPoint(.08f, .55f);
+            var sides = new[] { Vector3.right, Vector3.back, Vector3.left, Vector3.forward };
+
+            foreach (var size in new[] { new Vector2Int(390, 844), new Vector2Int(900, 430) })
+            {
+                FrameAt(size.x, size.y);
+                yield return null;
+                yield return null;
+                var deckPosition = console.bounds.center;
+                var top = Vector3.up * session.TowerTop();
                 var stone = session.Pending.Shape.bounds;
                 var lowerEdge = stone.center + Vector3.down * stone.extents.y;
-                AssertInView(top);
-                AssertInView(lowerEdge);
-                Assert.That(camera.WorldToViewportPoint(lowerEdge).y - camera.WorldToViewportPoint(top).y, Is.GreaterThan(.035f));
-                yield return Tap(Point(Control(arrow == Next ? Previous : Next)));
+                var front = camera.WorldToViewportPoint(top);
+                float fieldOfView = camera.fieldOfView;
+                var point = blank;
+                Touch(1, TouchPhase.Began, point);
+                yield return null;
+
+                foreach (var outside in sides)
+                {
+                    point += Vector2.right * (Screen.width * .1875f);
+                    Touch(1, TouchPhase.Moved, point);
+                    yield return null;
+                    yield return null;
+                    AssertFacing(outside);
+                    Assert.That(camera.rect, Is.EqualTo(new Rect(0, 0, 1, 1)));
+                    Assert.That(camera.fieldOfView, Is.EqualTo(fieldOfView).Within(.001f));
+                    Assert.That(console.bounds.center, Is.EqualTo(deckPosition));
+                    AssertInView(deckPosition);
+                    AssertInView(top);
+                    AssertInView(lowerEdge);
+                    float gap = camera.WorldToViewportPoint(lowerEdge).y - camera.WorldToViewportPoint(top).y;
+                    Assert.That(gap * size.y, Is.GreaterThan(12f));
+                    AssertWorkingWindow(roof.bounds, pane.bounds, originalHeight);
+                }
+
+                Touch(1, TouchPhase.Ended, point);
+                yield return new WaitForSecondsRealtime(.55f);
+                AssertFacing(Vector3.forward);
+                Assert.That(Vector3.Distance(camera.WorldToViewportPoint(top), front), Is.LessThan(.001f));
             }
         }
 
         [UnityTest]
-        public IEnumerator CanceledFacePressesCannotTurnAfterBrowserFocusReturns()
+        public IEnumerator AFocusLossOrCanceledTouchReturnsTheCabinetAndRequiresAFreshPress()
         {
             var input = root.GetComponent<GameInput>();
-            var arrow = Point(Control(Next));
-            Touch(1, TouchPhase.Began, arrow);
-            yield return null;
+            var blank = ScreenPoint(.08f, .55f);
+            var side = ScreenPoint(.2675f, .55f);
+            yield return BeginOrbit(blank, side);
             input.SetBrowserInputFocus("0");
-            yield return null;
+            yield return new WaitForSecondsRealtime(.6f);
+            AssertFacing(Vector3.forward);
+
             input.SetBrowserInputFocus("1");
-            Touch(1, TouchPhase.Ended, arrow);
+            Touch(1, TouchPhase.Moved, side + Vector2.right * 30);
             yield return null;
             yield return null;
             AssertFacing(Vector3.forward);
+            Touch(1, TouchPhase.Ended, side + Vector2.right * 30);
+            yield return null;
+            yield return null;
 
-            Touch(2, TouchPhase.Began, arrow);
-            yield return null;
-            input.CancelForFocusLoss();
-            Touch(2, TouchPhase.Ended, arrow);
-            yield return null;
-            yield return null;
+            yield return BeginOrbit(blank, side);
+            AssertFacing(Vector3.right);
+            Touch(1, TouchPhase.Canceled, side);
+            yield return new WaitForSecondsRealtime(.6f);
             AssertFacing(Vector3.forward);
+        }
 
-            Touch(3, TouchPhase.Began, arrow);
-            yield return null;
-            Touch(3, TouchPhase.Canceled, arrow);
-            yield return null;
-            yield return null;
-            AssertFacing(Vector3.forward);
+        float Azimuth() => Vector3.SignedAngle(Vector3.forward,
+            Vector3.ProjectOnPlane(camera.transform.position, Vector3.up), Vector3.up);
 
-            yield return Tap(arrow, 4);
-            AssertFacing(Vector3.left);
+        IEnumerator BeginOrbit(Vector2 start, Vector2 end)
+        {
+            Touch(1, TouchPhase.Began, start);
+            yield return null;
+            Touch(1, TouchPhase.Moved, end);
+            yield return null;
+            yield return null;
         }
 
         [UnityTest]
@@ -240,28 +599,34 @@ namespace RockBalancing.Tests
             var head = cabinet.GetComponentsInChildren<Renderer>().Single(renderer => renderer.name == "Claw head");
             var jaw = cabinet.GetComponentsInChildren<Renderer>().Single(renderer => renderer.name == "Claw jaw 1");
             var closed = jaw.transform.localRotation;
-            var buttonHeight = cabinet.ReleaseButton.position.y;
+            var buttonHeight = cabinet.ReleaseButton.localPosition.y;
+            var releaseHeight = stone.transform.position.y;
             var release = Point(Control("Release"));
             Touch(1, TouchPhase.Began, release);
             yield return null;
             yield return null;
-            Assert.That(cabinet.ReleaseButton.position.y, Is.LessThan(buttonHeight - .006f));
+            Assert.That(cabinet.ReleaseButton.localPosition.y, Is.LessThan(buttonHeight - .006f));
             Touch(1, TouchPhase.Ended, release);
             yield return null;
             Assert.That(stone.Released, Is.True);
             var next = session.Pending;
             Assert.That(next, Is.Not.Null.And.Not.SameAs(stone));
 
-            yield return Tap(Point(Control(Next)), 2);
-            AssertFacing(Vector3.left);
-            yield return new WaitForSeconds(.05f);
+            var side = ScreenPoint(.2675f, .55f);
+            yield return BeginOrbit(ScreenPoint(.08f, .55f), side);
+            AssertFacing(Vector3.right);
+            Assert.That(stone.transform.position.y, Is.LessThan(releaseHeight));
+            AssertInView(stone.transform.position);
             Assert.That(Quaternion.Angle(closed, jaw.transform.localRotation), Is.GreaterThan(15));
             Assert.That(head.bounds.center.x, Is.GreaterThan(.10f), "The claw has to let go before returning to supply.");
 
             yield return new WaitForSeconds(.38f);
             Assert.That(head.bounds.center.x, Is.EqualTo(next.transform.position.x).Within(.005f));
             Assert.That(jaw.bounds.min.y, Is.LessThan(next.HighestPoint()));
-            Assert.That(cabinet.ReleaseButton.position.y, Is.EqualTo(buttonHeight));
+            Assert.That(cabinet.ReleaseButton.localPosition.y, Is.EqualTo(buttonHeight));
+            AssertFacing(Vector3.right);
+            Touch(1, TouchPhase.Ended, side);
+            yield return null;
         }
 
         [UnityTest]
@@ -272,15 +637,15 @@ namespace RockBalancing.Tests
             var cabinet = root.GetComponent<ArcadeCabinet>();
             var stone = session.Pending;
             var start = stone.transform.position;
-            var grip = camera.WorldToViewportPoint(cabinet.Joystick.position + new Vector3(0, .159f, -.013f));
+            var grip = camera.WorldToViewportPoint(
+                ArcadeFrontTests.MaterialCenter(cabinet.Joystick.GetComponent<Renderer>(), "Vermilion"));
             var knob = new Vector2(grip.x * Screen.width, grip.y * Screen.height);
             Touch(1, TouchPhase.Began, knob);
             yield return new WaitForSeconds(.24f);
             Assert.That(stone.transform.position, Is.EqualTo(start));
             AssertFacing(Vector3.forward);
-            Assert.That(Control(Next).gameObject.activeInHierarchy, Is.False);
 
-            var dragged = knob + Vector2.right * 35;
+            var dragged = knob + Vector2.right * Mathf.Max(35, Screen.width * .025f);
             Touch(1, TouchPhase.Moved, dragged);
             yield return new WaitForSeconds(.18f);
             Assert.That(stone.transform.position.x, Is.LessThan(start.x - .02f));
@@ -288,78 +653,9 @@ namespace RockBalancing.Tests
             yield return null;
         }
 
-        [UnityTest]
-        public IEnumerator LandscapeSideWindowsShowTheSupportAndGapWithTheConsoleOutsideTheFrame()
-        {
-            FrameAt(900, 430);
-            var cabinet = root.GetComponent<ArcadeCabinet>();
-            session.Initialize(new StackableStones(), session.Base, session.Ground);
-            yield return null;
-
-            for (int layer = 0; layer < 2; layer++)
-            {
-                foreach (var arrow in new[] { Next, Previous })
-                {
-                    yield return Tap(Point(Control(arrow)));
-                    var top = Vector3.up * session.TowerTop();
-                    var bounds = session.Pending.Shape.bounds;
-                    var lowerEdge = bounds.center + Vector3.down * bounds.extents.y;
-                    AssertInView(top);
-                    AssertInView(lowerEdge);
-                    Assert.That(camera.WorldToViewportPoint(lowerEdge).y - camera.WorldToViewportPoint(top).y,
-                        Is.GreaterThan(.035f));
-                    var frustum = GeometryUtility.CalculateFrustumPlanes(camera);
-                    foreach (var control in new[] { cabinet.Joystick, cabinet.LiftButton, cabinet.LowerButton, cabinet.ReleaseButton })
-                        Assert.That(GeometryUtility.TestPlanesAABB(frustum, control.GetComponent<Renderer>().bounds),
-                            Is.False, $"{control.name} should be outside the side window.");
-                    yield return Tap(Point(Control(arrow == Next ? Previous : Next)));
-                }
-
-                if (layer != 0) continue;
-                var restingStone = session.Pending;
-                Assert.That(session.Adjust(restingStone, Vector3.up * (session.BaseTop + .11f), Quaternion.identity), Is.True);
-                Assert.That(session.Release(restingStone), Is.True);
-                yield return new WaitForSeconds(.35f);
-                Assert.That(session.TowerTop(), Is.GreaterThan(session.BaseTop + .15f));
-                Assert.That(session.Adjust(session.Pending, Vector3.up * (session.TowerTop() + .28f), Quaternion.identity), Is.True);
-            }
-        }
-
-        [UnityTest]
-        public IEnumerator AutomaticLandscapeAspectKeepsTheSideCropStableAndRestoresTheFirstFrontFrame()
-        {
-            FrameAt(900, 430);
-            yield return null;
-            yield return null;
-            var reference = new Vector3(.25f, session.BaseTop + .04f, .20f);
-            var front = camera.WorldToViewportPoint(reference);
-
-            yield return Tap(Point(Control(Next)));
-            AssertFacing(Vector3.left);
-            var sideViewport = camera.rect;
-            var side = camera.WorldToViewportPoint(reference);
-            Assert.That(sideViewport.width, Is.InRange(.37f, .42f));
-            Assert.That(sideViewport.center.x, Is.EqualTo(.5f).Within(.001f));
-            for (int frame = 0; frame < 8; frame++)
-            {
-                yield return null;
-                Assert.That(camera.rect, Is.EqualTo(sideViewport), $"Side viewport changed on frame {frame}.");
-                Assert.That(Vector3.Distance(camera.WorldToViewportPoint(reference), side), Is.LessThan(.0001f));
-            }
-
-            var previous = Point(Control(Previous));
-            Touch(1, TouchPhase.Began, previous);
-            yield return null;
-            Touch(1, TouchPhase.Ended, previous);
-            yield return null;
-            yield return null; // The first front frame is placed in LateUpdate after pointer-up.
-            AssertFacing(Vector3.forward);
-            Assert.That(camera.rect, Is.EqualTo(new Rect(0, 0, 1, 1)));
-            Assert.That(Vector3.Distance(camera.WorldToViewportPoint(reference), front), Is.LessThan(.0001f));
-        }
-
         void FrameAt(int width, int height)
         {
+            if (renderTarget != null) Object.Destroy(renderTarget);
             renderTarget = new RenderTexture(width, height, 24);
             camera.targetTexture = renderTarget;
             camera.ResetAspect();

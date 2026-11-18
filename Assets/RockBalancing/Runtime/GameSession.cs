@@ -7,6 +7,7 @@ namespace RockBalancing
 {
     public sealed class GameSession : MonoBehaviour
     {
+        internal const float SupplyClearance = .28f;
         readonly List<Stone> stones = new List<Stone>();
         IStoneFactory factory;
         bool generating;
@@ -22,6 +23,8 @@ namespace RockBalancing
         [Min(0)] public float AngularMotionThreshold = .08f;
         public Func<double> Clock { get; set; } = () => Time.timeAsDouble;
         public int CurrentHeightMm { get; private set; }
+        public int ArcadeHighestStableHeightMm { get; private set; }
+        internal bool TrackArcadeRecord { get; set; }
         public bool Stabilizing => Clock() < promptUntil;
         public bool ShareBusy { get; private set; }
         public bool CanShare => !Stabilizing && !ShareBusy;
@@ -40,6 +43,8 @@ namespace RockBalancing
         public Collider Base { get; private set; }
         public Collider Ground { get; private set; }
         public float BaseTop => Base == null ? 0 : Base.bounds.max.y;
+        internal Vector3 StandardSupplyPoint => new Vector3(0, TowerTop() + SupplyClearance, 0);
+        internal float PendingSupplyHeight { get; private set; }
         public event Action Restarted;
         public event Action PendingChanged;
 
@@ -83,6 +88,8 @@ namespace RockBalancing
                 else if(now-quietSince >= .12) movingEpisode=false;
             }
             CurrentHeightMm = Mathf.FloorToInt(Mathf.Max(0,height)*1000f);
+            if (TrackArcadeRecord && !Stabilizing && !connectedMoving)
+                ArcadeHighestStableHeightMm = Mathf.Max(ArcadeHighestStableHeightMm, CurrentHeightMm);
         }
         bool IsMoving(Stone stone) => !stone.Body.IsSleeping() &&
             (stone.Body.linearVelocity.sqrMagnitude > LinearMotionThreshold*LinearMotionThreshold ||
@@ -111,7 +118,8 @@ namespace RockBalancing
             try
             {
                 Physics.SyncTransforms();
-                var stone = await factory.CreateAsync(new Vector3(0, TowerTop() + .28f, 0), transform);
+                var supplyPoint = StandardSupplyPoint;
+                var stone = await factory.CreateAsync(supplyPoint, transform);
                 if (this == null || requestEpoch != generation)
                 {
                     if (stone != null) Destroy(stone.gameObject);
@@ -129,6 +137,7 @@ namespace RockBalancing
                 // Preview poses are driven every render frame, not by physics.
                 // Interpolation would restore an older physics pose between inputs.
                 stone.Body.interpolation = RigidbodyInterpolation.None;
+                PendingSupplyHeight = supplyPoint.y;
                 Pending = stone;
                 PendingChanged?.Invoke();
                 stones.Add(stone);
@@ -150,7 +159,17 @@ namespace RockBalancing
         public bool AdjustRotationStep(Stone expected, Quaternion rotation) =>
             expected != null && SweepAdjustment(expected, expected.transform.position, rotation, allowPartial: false);
 
-        bool SweepAdjustment(Stone expected, Vector3 position, Quaternion rotation, bool allowPartial)
+        internal void LowerPendingTo(float maximumLift)
+        {
+            var pending = Pending;
+            if (pending == null) return;
+            var position = pending.transform.position;
+            if (position.y <= maximumLift) return;
+            position.y = maximumLift;
+            SweepAdjustment(pending, position, pending.transform.rotation, allowPartial: true, reportFeedback: false);
+        }
+
+        bool SweepAdjustment(Stone expected, Vector3 position, Quaternion rotation, bool allowPartial, bool reportFeedback = true)
         {
             if (expected == null || expected != Pending) return false;
             var origin = expected.transform.position;
@@ -167,12 +186,12 @@ namespace RockBalancing
                 // A moving tower may enter the preview. Permit motion out of that
                 // overlap, but never enable physics until it is fully clear.
                 if (depth > .0002f && (previousDepth <= .0002f || depth >= previousDepth-.000001f))
-                { ContactFeedback(); return false; }
+                { if (reportFeedback) ContactFeedback(); return false; }
                 if (allowPartial) expected.transform.SetPositionAndRotation(p,q);
                 previousDepth=depth;
             }
             if (!allowPartial) expected.transform.SetPositionAndRotation(position, rotation);
-            Feedback="";
+            if (reportFeedback) Feedback="";
             return true;
         }
 
@@ -261,6 +280,7 @@ namespace RockBalancing
             stones.Clear();
             joined.Clear(); connected.Clear();
             promptUntil=0; CurrentHeightMm=0; ShareBusy=false;
+            ArcadeHighestStableHeightMm = 0;
             movingEpisode=false; quietSince=-1;
             Feedback = "";
             Restarted?.Invoke();

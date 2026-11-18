@@ -6,7 +6,11 @@ Open `Scenes/Balance.unity` and enter Play Mode. The scene creates its camera, b
 
 Open `Scenes/Arcade.unity` in Play Mode. Drag the joystick to move the claw left, right, toward the front or toward the rear. Hold the two mint buttons to raise or lower it. Drag the suspended stone to rotate it, then tap the orange release button to drop it. The measured tower height updates under the same rules as the original game.
 
-Tap an edge arrow to move to the adjacent window. The front window accepts placement input. Holding the joystick, a height button or the stone locks the view until you let go. After release you can switch windows immediately to follow the falling stone. In 设置, turn on 刻度旋转 to see three cabinet-axis rings when holding the stone. Each drag can turn one full step, initially 15°. Lift your finger to start another step.
+Drag horizontally from empty space to look around the cabinet. Release to return to the front along the shortest arc. Grab empty space again during the return to keep looking. The console stays in front of the machine. Wait for the camera to return fully, then press a control again to operate it.
+
+Drag the held stone itself to rotate it. In 设置, choose free rotation or 15°/30° steps. In stepped mode the three rings show the cabinet axes. One continuous drag can cross several steps or reverse direction. At an obstruction the stone stops at the last clear step, and you can drag back.
+
+The perspective camera looks at the standard supply position above the centre of the base. The camera and chamber rise and fall with the tower. Moving the claw and releasing a stone leave the framing steady. In either screen orientation, one original chamber height remains visible below the roof.
 
 With Web selected as the build platform, use `RockBalancing.Editor.BuildGame.BuildWebVariants` to build both editions. Pass `-buildTarget WebGL` when starting Unity in batch mode. Serve `Builds/Web` as one static site and open `/` for the original game or `/arcade/` for STRATA. For a local preview run `python -m http.server 8000 --directory Builds/Web` from the project root and open the corresponding path at `http://localhost:8000`. `BuildWeb` and `BuildArcadeWeb` also build the editions individually.
 
@@ -16,7 +20,7 @@ Open `Arcade/Review/StrataCabinetReview.unity` to inspect the assembled cabinet 
 
 The four glass panes, joystick, buttons, bridge, trolley, cable and claw head have separate transforms. The cable pivots at its upper end. The review scene supplies the floor, pedestal and sample stones around the cabinet.
 
-## Controls
+## Original edition controls
 
 - Hold the bottom joystick away from its centre to move horizontally; a larger offset moves faster. Return to centre or let go to stop. The separate lift control works the same way vertically, and both controls can be held together.
 - On a desktop keyboard, hold **W/A/S/D** to move along the current horizontal observation heading, and **Up/Down** to raise/lower the release height. Both work together. Opposing keys cancel and diagonal movement is capped. Click the game to regain operation focus after using other page controls.

@@ -11,25 +11,26 @@ namespace RockBalancing
         public GameSession Session;
         public Camera ViewCamera;
         public ArcadeCabinet Cabinet;
-        int cabinetTurn;
+        const float CabinetOrbitDegreesPerWidth = 480f;
+        const float CabinetReturnSeconds = .45f;
+        float cabinetAzimuth, cabinetReturnFrom, cabinetReturnElapsed;
+        bool orbitingCabinet, arcadeKeyboardNeedsRelease;
+        internal bool ArcadeControlsAvailable => !orbitingCabinet && cabinetAzimuth == 0;
         public float RotationStepDegrees { get; set; }
         internal bool StepRotationEnabled { get; private set; }
         internal Stone StepRotationTarget => StepRotationEnabled && active && rotating && CanAdjust ? selected : null;
         readonly Vector2[] stepTangents = new Vector2[ArcadeRotationGeometry.AxisCount];
-        bool stepUsed;
-        internal void SetStepRotation(bool enabled)
+        Vector3 stepAxis;
+        Vector2 stepTangent;
+        float stepTravel, blockedStepDirection;
+        internal void SetRotationMode(float step)
         {
-            if (Cabinet == null || StepRotationEnabled == enabled) return;
+            if (Cabinet == null) return;
             CancelGesture();
-            StepRotationEnabled = enabled;
+            StepRotationEnabled = step > 0;
+            if (StepRotationEnabled) RotationStepDegrees = step;
         }
         public bool IsOperating => Adjusting || (active && rotating) || keyboardHeld;
-        internal bool ShowCabinetArrows => !Modal && !IsOperating;
-        internal bool CanTurnCabinet => Cabinet != null && ShowCabinetArrows && !focusLost && !paused && browserFocused;
-        internal void RequestCabinetTurn(int direction)
-        {
-            if (CanTurnCabinet) cabinetTurn = direction;
-        }
         public ObservationOcclusion Occlusion { get; private set; }
         bool modal;
         public bool Modal
@@ -96,17 +97,22 @@ namespace RockBalancing
         {
             yaw = 25; pitch = 16; distance = 3.8f;
             target = Session.Pending != null ? Session.Pending.transform.position : new Vector3(0, Session.BaseTop + .28f, 0);
-            Cabinet?.ResetFace();
-            cabinetTurn = 0;
+            Cabinet?.ResetClaw();
+            cabinetAzimuth = 0;
             CancelForFocusLoss();
         }
-        public void CancelGesture() { active = false; selected = null; touchId = -1; pinch = 0; }
-        public void CancelForFocusLoss(string unused="")
+        public void CancelGesture()
         {
-            CancelStoneOperations();
-            cabinetTurn = 0;
-            foreach (var button in GetComponentsInChildren<ArcadeFaceButton>(true)) button.Cancel();
+            active = false;
+            selected = null;
+            touchId = -1;
+            pinch = 0;
+            if (!orbitingCabinet) return;
+            orbitingCabinet = false;
+            cabinetReturnFrom = cabinetAzimuth;
+            cabinetReturnElapsed = 0;
         }
+        public void CancelForFocusLoss(string unused="") => CancelStoneOperations();
         void CancelStoneOperations()
         {
             CancelGesture();requireNeutral=true;
@@ -115,9 +121,12 @@ namespace RockBalancing
             foreach(var pad in GetComponentsInChildren<DragPad>(true))pad.Cancel();
             foreach(var button in GetComponentsInChildren<StoneActionButton>(true))button.Cancel();
         }
-        void CancelForStoneChange() => CancelStoneOperations();
+        void CancelForStoneChange()
+        {
+            if (ArcadeControlsAvailable) CancelStoneOperations();
+        }
         public bool CanAdjust => !Modal && !focusLost && !paused && browserFocused && !requireNeutral &&
-            Session != null && Session.Pending != null && (Cabinet == null || Cabinet.IsFront);
+            Session != null && Session.Pending != null && ArcadeControlsAvailable;
         public bool CanAct => CanAdjust && Time.unscaledTimeAsDouble >= nextActionTime;
         public bool ActOnStone(Stone expected, bool discard)
         {
@@ -192,7 +201,8 @@ namespace RockBalancing
                 return;
             }
             if (pinch > 0) { if (count == 0) { CancelGesture(); blocked = false; } return; }
-            if (count > 0)
+            bool arcadeMouseGesture = Cabinet != null && active && touchId == -1;
+            if (count > 0 && !arcadeMouseGesture)
             {
                 if (touchId != first.touchId.ReadValue())
                 {
@@ -212,7 +222,7 @@ namespace RockBalancing
                 }
                 End(end);touchId=-1;return;
             }
-            if (total > 0) return;
+            if (total > 0 && !arcadeMouseGesture) return;
             var mouse = Mouse.current;
             if (mouse == null) return;
             var p = mouse.position.ReadValue();
@@ -231,7 +241,9 @@ namespace RockBalancing
         void ReadKeyboard()
         {
             var keys=Keyboard.current;
-            keyboardHeld=CanAdjust && MovementKeyHeld();
+            bool moving = MovementKeyHeld();
+            arcadeKeyboardNeedsRelease = moving && (arcadeKeyboardNeedsRelease || !ArcadeControlsAvailable);
+            keyboardHeld=CanAdjust && moving && !arcadeKeyboardNeedsRelease;
             keyboardPlanar=keyboardHeld ? Vector2.ClampMagnitude(new Vector2(
                 (keys.dKey.isPressed?1:0)-(keys.aKey.isPressed?1:0),
                 (keys.wKey.isPressed?1:0)-(keys.sKey.isPressed?1:0)),1) : Vector2.zero;
@@ -255,19 +267,23 @@ namespace RockBalancing
         {
             start = previous = position;
             dragged = false;
-            stepUsed = false;
+            stepAxis = Vector3.zero;
+            stepTravel = blockedStepDirection = 0;
             blocked = IsUI(position);
             active = !blocked;
             selected = Session.Pending;
             rotating = false;
-            if (Cabinet != null && !CanAdjust) { active = false; return; }
             if (active && ObservationHit(ViewCamera.ScreenPointToRay(position), out var hit))
             {
                 var stone = hit.collider.GetComponent<Stone>();
                 rotating = stone != null && stone == selected;
                 if (stone != null && stone != selected) blocked = true;
             }
-            if (Cabinet != null && !rotating) active = false;
+            if (Cabinet != null)
+            {
+                active = active && !blocked && (rotating ? CanAdjust : !IsOperating);
+                orbitingCabinet = active && !rotating;
+            }
             if (StepRotationTarget != null)
                 ArcadeRotationGeometry.GetTangents(Cabinet.transform, ViewCamera, selected.transform.position, position, stepTangents);
         }
@@ -286,23 +302,40 @@ namespace RockBalancing
         }
         bool IsUI(Vector2 p)
         {
-            if (EventSystem.current == null) return false;
-            uiHits.Clear();
-            EventSystem.current.RaycastAll(new PointerEventData(EventSystem.current) { position = p }, uiHits);
-            return uiHits.Count > 0;
+            if (EventSystem.current != null)
+            {
+                uiHits.Clear();
+                EventSystem.current.RaycastAll(new PointerEventData(EventSystem.current) { position = p }, uiHits);
+                if (uiHits.Count > 0) return true;
+            }
+            if (Cabinet == null || ArcadeControlsAvailable) return false;
+
+            // During orbit or return the front touch targets are disabled. Use the
+            // camera pose that drew the frame where the pointer went down.
+            var ray = ViewCamera.ViewportPointToRay(new Vector2(p.x / Screen.width, p.y / Screen.height));
+            if (!Cabinet.TryHitControl(ray, ViewCamera.farClipPlane, out float distance)) return false;
+            foreach (var hit in Physics.RaycastAll(ray, distance, ~0, QueryTriggerInteraction.Collide))
+                if (hit.collider == Session.Base || hit.collider.TryGetComponent<Stone>(out _)) return false;
+            return true;
         }
         void Move(Vector2 p)
         {
             Vector2 delta = p - previous;
             previous = p;
             if (!active || blocked) return;
+            if (orbitingCabinet)
+            {
+                float travel = delta.x * CabinetOrbitDegreesPerWidth / Mathf.Max(1, Screen.width);
+                cabinetAzimuth = Mathf.DeltaAngle(0, cabinetAzimuth + travel);
+                return;
+            }
             if ((p - start).magnitude > Mathf.Max(8, Screen.height * .008f)) dragged = true;
             if (!dragged) return;
             if (rotating && selected != null)
             {
                 if (StepRotationEnabled)
                 {
-                    if (!stepUsed && CanAdjust) RotateOneStep(p - start);
+                    if (CanAdjust) RotateInSteps(p - start, delta);
                     return;
                 }
                 var rotation = Quaternion.AngleAxis(-delta.x * RotationSensitivity, ViewCamera.transform.up) *
@@ -315,18 +348,42 @@ namespace RockBalancing
                 pitch = Mathf.Clamp(pitch - delta.y * OrbitSensitivity, Mathf.Clamp(MinimumPitch,-90,90), Mathf.Clamp(MaximumPitch,Mathf.Clamp(MinimumPitch,-90,90),90));
             }
         }
-        void RotateOneStep(Vector2 drag)
+        void RotateInSteps(Vector2 drag, Vector2 delta)
         {
-            stepUsed = true;
-            var axis = ArcadeRotationGeometry.GetSignedAxis(Cabinet.transform, drag, stepTangents);
+            if (stepAxis == Vector3.zero)
+            {
+                (stepAxis, stepTangent) = ArcadeRotationGeometry.GetDragAxis(Cabinet.transform, drag, stepTangents);
+                delta = drag;
+            }
+
+            float travel = Vector2.Dot(delta, stepTangent);
+            if (travel == 0) return;
+            if (blockedStepDirection == -Mathf.Sign(travel))
+            {
+                // Reverse from the last accepted tick, including after more motion into the obstacle.
+                stepTravel = blockedStepDirection = 0;
+            }
+            stepTravel += travel;
+            float tick = Mathf.Max(32, Screen.height * .04f);
             float step = Mathf.Clamp(RotationStepDegrees, 1, 179);
-            var rotation = Quaternion.AngleAxis(step, axis) * selected.transform.rotation;
-            Session.AdjustRotationStep(selected, rotation);
+            while (Mathf.Abs(stepTravel) >= tick)
+            {
+                float direction = Mathf.Sign(stepTravel);
+                var rotation = Quaternion.AngleAxis(direction * step, stepAxis) * selected.transform.rotation;
+                if (!Session.AdjustRotationStep(selected, rotation))
+                {
+                    stepTravel = 0;
+                    blockedStepDirection = direction;
+                    return;
+                }
+                stepTravel -= direction * tick;
+                blockedStepDirection = 0;
+            }
         }
 
         void End(Vector2 p)
         {
-            if (StepRotationTarget != null) Move(p);
+            if (orbitingCabinet || StepRotationTarget != null) Move(p);
             CancelGesture();
         }
         public void HoldPlanar(bool held)
@@ -378,16 +435,13 @@ namespace RockBalancing
             MoveHeldStone();
             if (Cabinet != null)
             {
-                // The UI can deliver a click before the scene reads a stone press in the same frame.
-                if (cabinetTurn != 0 && CanTurnCabinet)
+                if (!orbitingCabinet && cabinetAzimuth != 0)
                 {
-                    CancelGesture();
-                    Cabinet.Turn(cabinetTurn);
-                    if (MovementKeyHeld()) requireNeutral = true;
+                    cabinetReturnElapsed += Time.unscaledDeltaTime;
+                    cabinetAzimuth = Mathf.SmoothStep(cabinetReturnFrom, 0, cabinetReturnElapsed / CabinetReturnSeconds);
                 }
-                cabinetTurn = 0;
-                Cabinet.Follow(Session.Pending, Session.TowerTop());
-                Cabinet.PlaceCamera(ViewCamera);
+                Cabinet.Follow(Session);
+                Cabinet.PlaceCamera(ViewCamera, cabinetAzimuth);
                 return;
             }
             // A scene gesture owns the observation centre until all its fingers end.

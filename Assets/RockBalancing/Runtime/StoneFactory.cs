@@ -12,10 +12,12 @@ namespace RockBalancing
     {
         readonly Material template;
         readonly StoneShapeSettings shapes;
+        readonly bool arcade;
         readonly System.Func<int> nextSeed;
-        public StoneFactory(Material template=null, StoneShapeSettings shapes=null, System.Func<int> nextSeed=null)
+        public StoneFactory(Material template=null, StoneShapeSettings shapes=null, System.Func<int> nextSeed=null, bool arcade=false)
         {
             this.template=template;
+            this.arcade=arcade;
             this.shapes=shapes ?? new StoneShapeSettings();
             this.nextSeed=nextSeed ?? (() => Random.Range(int.MinValue, int.MaxValue));
         }
@@ -25,7 +27,8 @@ namespace RockBalancing
             go.name = "Stone";
             go.transform.SetParent(parent, false);
             go.transform.position = position;
-            var mesh = PebbleMesh.Create(nextSeed(), shapes);
+            int seed = nextSeed();
+            var mesh = arcade ? ArcadeRockMesh.CreateStone(seed, shapes) : PebbleMesh.Create(seed, shapes);
             go.GetComponent<MeshFilter>().sharedMesh = mesh;
             var shape = go.GetComponent<MeshCollider>();
             shape.sharedMesh = mesh;
@@ -36,7 +39,9 @@ namespace RockBalancing
                 frictionCombine = PhysicsMaterialCombine.Maximum, bounceCombine = PhysicsMaterialCombine.Minimum
             };
             shape.sharedMaterial = physicsMaterial;
-            var material = MakeMaterial(new Color(.38f, .46f, .45f),template);
+            var material = arcade && template != null
+                ? new Material(template)
+                : MakeMaterial(new Color(.38f, .46f, .45f), template);
             go.GetComponent<Renderer>().sharedMaterial = material;
             var body = go.AddComponent<Rigidbody>();
             body.isKinematic = true;

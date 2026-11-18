@@ -11,10 +11,9 @@ namespace RockBalancing
         public Transform LiftButton { get; private set; }
         public Transform LowerButton { get; private set; }
         public Transform ReleaseButton { get; private set; }
-        internal Vector3 StickGrip => Joystick.position + new Vector3(0, .159f, -.013f);
-        internal bool IsFront => face == 0;
+        internal Vector3 StickGrip => Joystick.TransformPoint(Vector3.up * .105f);
 
-        Transform roof, bridge, trolley, cable, claw;
+        Transform console, roof, bridge, trolley, cable, claw;
         readonly Transform[] window = new Transform[5];
         readonly Vector3[] windowScales = new Vector3[5];
         readonly Transform[] jaws = new Transform[3];
@@ -22,26 +21,35 @@ namespace RockBalancing
         readonly Vector3[] jawAxes = new Vector3[3];
         Quaternion neutralStick;
         Vector3 roofHome, bridgeHome, trolleyHome, cableHome, clawHome, cableScale;
-        Vector3 liftHome, lowerHome, releaseHome;
+        Vector3 consoleHome, liftHome, lowerHome, releaseHome;
         const float WindowHeight = 1.159f;
         const float GantryClearance = .03f;
+        const float CameraDistance = 4.97f;
+        const float SupplyFollowSeconds = .18f;
+        const float MinimumLift = .70f;
+        const float LiftAllowance = .34f;
         const float OpenSeconds = .10f;
         const float ReturnSeconds = .16f;
         const float CloseSeconds = .14f;
         Vector3 releaseFrom;
-        float jawReach, jawAngle, releaseAngle, releaseElapsed, extension, maximumLift;
+        float jawReach, jawAngle, releaseAngle, releaseElapsed, extension, roofCeiling;
+        float supplyRise, supplyVelocity, initialLift, maximumLift;
+        Vector3 cameraFocus;
         bool releasing;
         Stone suppliedStone;
-        int face;
+        ArcadeConsoleHitTest consoleHitTest;
 
         public void Initialize(GameObject model)
         {
             var body = Instantiate(model, transform).transform;
             body.name = model.name;
-            Joystick = body.Find("Joystick");
-            LiftButton = body.Find("Button Lift");
-            LowerButton = body.Find("Button Lower");
-            ReleaseButton = body.Find("Button Release");
+            console = body.Find("Console");
+            consoleHome = console.localPosition;
+            Joystick = console.Find("Joystick");
+            LiftButton = console.Find("Button Lift");
+            LowerButton = console.Find("Button Lower");
+            ReleaseButton = console.Find("Button Release");
+            consoleHitTest = new ArcadeConsoleHitTest(body, Joystick, LiftButton, LowerButton, ReleaseButton);
             roof = body.Find("Roof");
             bridge = body.Find("Bridge");
             trolley = body.Find("Trolley");
@@ -55,10 +63,11 @@ namespace RockBalancing
             }
 
             neutralStick = Joystick.localRotation;
-            liftHome = LiftButton.position;
-            lowerHome = LowerButton.position;
-            releaseHome = ReleaseButton.position;
+            liftHome = LiftButton.localPosition;
+            lowerHome = LowerButton.localPosition;
+            releaseHome = ReleaseButton.localPosition;
             roofHome = roof.position;
+            roofCeiling = roof.GetComponent<Renderer>().bounds.min.y;
             bridgeHome = bridge.position;
             trolleyHome = trolley.position;
             cableHome = cable.position;
@@ -76,56 +85,47 @@ namespace RockBalancing
             }
         }
 
-        public void PlaceCamera(Camera camera)
+        public void PlaceCamera(Camera camera, float azimuth = 0)
         {
-            // Use the full render surface every frame. The camera's automatic aspect
-            // can already reflect the cropped side viewport from the previous frame.
-            var target = camera.targetTexture;
-            float renderAspect = target != null
-                ? (float)target.width / target.height
-                : (float)Screen.width / Mathf.Max(1, Screen.height);
-            var aroundCabinet = Quaternion.Euler(0, -face * 90, 0);
-            camera.orthographic = true;
-            if (face % 2 != 0)
-            {
-                PlaceSideCamera(camera, aroundCabinet, renderAspect);
-                return;
-            }
+            float pitch = 12f + 3f * Mathf.Cos(azimuth * Mathf.Deg2Rad);
+            PlacePerspectiveCamera(camera, azimuth, pitch);
+        }
 
+        internal void PlacePerspectiveCamera(Camera camera, float azimuth, float pitch)
+        {
+            float aspect = RenderAspect(camera);
+            PlaceConsole(aspect, supplyRise);
+            camera.orthographic = false;
             camera.rect = new Rect(0, 0, 1, 1);
-            camera.aspect = renderAspect;
-            // The front pitch shows the tops of the physical controls through the same
-            // frame as the claw and tower. The rear looks over the lower cabinet trim.
-            var focus = new Vector3(0, (IsFront ? .38f : .43f) + extension * .5f, 0);
-            var offset = new Vector3(0, IsFront ? 1.28f : .76f, 4.8f);
-            camera.orthographicSize = Mathf.Max(1.25f, .86f / renderAspect) + extension * .53f;
-            camera.transform.SetPositionAndRotation(
-                focus + aroundCabinet * offset,
-                aroundCabinet * Quaternion.Euler(IsFront ? 14.93f : 9f, 180, 0));
+            camera.aspect = aspect;
+            // Fit the upper working window and its horizontal footprint. The angular
+            // bounds cover the cabinet around the full orbit, independent of tower height.
+            float halfFovTangent = Mathf.Max(.36f, .245f / aspect);
+            camera.fieldOfView = 2 * Mathf.Atan(halfFovTangent) * Mathf.Rad2Deg;
+            var rotation = Quaternion.Euler(pitch, 180 + azimuth, 0);
+            camera.transform.SetPositionAndRotation(cameraFocus + rotation * Vector3.back * CameraDistance, rotation);
         }
 
-        void PlaceSideCamera(Camera camera, Quaternion aroundCabinet, float renderAspect)
+        static float RenderAspect(Camera camera)
         {
-            const float windowHalfWidth = .62f;
-            const float minimumHalfHeight = .76f;
-            var outside = aroundCabinet * Vector3.forward;
-            var halfHeight = windowHalfWidth / renderAspect;
-            // Keep a level view through the pane. On wide screens use a narrower
-            // viewport so the console stays outside the frame below the pane.
-            float height = Mathf.Clamp(1.4f - halfHeight, .43f, .62f);
-            var focus = new Vector3(0, height + extension * .5f, -.02f);
-            camera.orthographicSize = Mathf.Max(halfHeight, minimumHalfHeight) + extension * .5f;
-            float width = Mathf.Min(1, windowHalfWidth / (camera.orthographicSize * renderAspect));
-            camera.rect = new Rect((1 - width) * .5f, 0, width, 1);
-            camera.aspect = renderAspect * width;
-            camera.transform.SetPositionAndRotation(focus + outside * 4.8f, aroundCabinet * FrontHeading);
+            var target = camera.targetTexture;
+            return target != null
+                ? (float)target.width / target.height
+                : (float)Mathf.Max(1, Screen.width) / Mathf.Max(1, Screen.height);
         }
 
-        internal void Turn(int direction) => face = (face + direction + 4) % 4;
+        internal bool TryHitControl(Ray ray, float range, out float distance) =>
+            consoleHitTest.TryHitControl(ray, range, out distance);
 
-        internal void ResetFace()
+        void PlaceConsole(float aspect, float framingRise)
         {
-            face = 0;
+            // A taller portrait window leaves space beneath the glass for the deck.
+            float portrait = Mathf.InverseLerp(1f, .45f, aspect);
+            console.localPosition = consoleHome + Vector3.up * (framingRise - .24f * portrait);
+        }
+
+        internal void ResetClaw()
+        {
             releasing = false;
             suppliedStone = null;
         }
@@ -133,9 +133,12 @@ namespace RockBalancing
         public Vector3 LimitTravel(Stone pending, Vector3 to)
         {
             TrackSupply(pending);
+            // If a collision stopped an automatic descent, the player can still
+            // move sideways at that height to get clear of the obstacle.
+            float ceiling = pending == null ? maximumLift : Mathf.Max(maximumLift, pending.transform.position.y);
             return new Vector3(
                 Mathf.Clamp(to.x, -.45f, .45f),
-                Mathf.Min(to.y, maximumLift),
+                Mathf.Min(to.y, ceiling),
                 Mathf.Clamp(to.z, -.44f, .44f));
         }
 
@@ -143,7 +146,7 @@ namespace RockBalancing
         {
             if (pending == suppliedStone) return;
             suppliedStone = pending;
-            if (pending != null) maximumLift = Mathf.Max(.70f, pending.transform.position.y + .34f);
+            if (pending != null) initialLift = maximumLift = Mathf.Max(MinimumLift, pending.transform.position.y + LiftAllowance);
         }
 
         public void AnimateRelease()
@@ -154,12 +157,18 @@ namespace RockBalancing
             releasing = true;
         }
 
-        public void Follow(Stone pending, float towerTop)
+        public void Follow(GameSession session)
         {
-            TrackSupply(pending);
-            if (pending == null && !releasing) return;
+            var pending = session.Pending;
+            var supply = session.StandardSupplyPoint;
+            UpdateTravelCeiling(session, pending, supply.y);
+            float restSupplyHeight = session.BaseTop + GameSession.SupplyClearance;
+            float targetRise = supply.y - restSupplyHeight;
+            supplyRise = Mathf.SmoothDamp(supplyRise, targetRise, ref supplyVelocity, SupplyFollowSeconds);
+            cameraFocus = new Vector3(supply.x, restSupplyHeight + supplyRise, supply.z);
+
             var gripPoint = claw.position;
-            float grip = releaseAngle;
+            float grip = jawAngle;
             if (pending != null)
             {
                 gripPoint = pending.transform.position;
@@ -181,9 +190,10 @@ namespace RockBalancing
                 releasing = releaseElapsed < duration;
             }
 
-            float headroom = Mathf.Max(Mathf.Max(head.y, gripPoint.y) + GantryClearance, towerTop + .08f);
-            float needed = Mathf.Max(0, headroom - cableHome.y);
-            float nextExtension = Mathf.Max(needed, extension - Time.deltaTime * 1.4f);
+            float headroom = Mathf.Max(head.y, gripPoint.y) + GantryClearance;
+            // The window and camera share the same smoothed vertical travel. Allow
+            // extra clearance when the claw head physically reaches the canopy.
+            float nextExtension = Mathf.Max(supplyRise, headroom - roofCeiling);
             if (nextExtension != extension)
             {
                 extension = nextExtension;
@@ -195,7 +205,7 @@ namespace RockBalancing
 
             var depth = Vector3.forward * head.z;
             var offset = depth + Vector3.right * head.x;
-            var rise = Vector3.up * extension;
+            var rise = Vector3.up * Mathf.Max(extension, headroom - cableHome.y);
             bridge.position = bridgeHome + depth + rise;
             trolley.position = trolleyHome + offset + rise;
             cable.position = cableHome + offset + rise;
@@ -207,13 +217,25 @@ namespace RockBalancing
                 jaws[i].localRotation = Quaternion.AngleAxis(jawAngle, jawAxes[i]) * jawHomes[i];
         }
 
+        void UpdateTravelCeiling(GameSession session, Stone pending, float supplyHeight)
+        {
+            TrackSupply(pending);
+            if (pending == null) return;
+            // A collapse can reduce the legal lift range immediately. Keep any
+            // release height inside that range and sweep down only as far as safe.
+            maximumLift = supplyHeight < session.PendingSupplyHeight
+                ? Mathf.Min(initialLift, Mathf.Max(MinimumLift, supplyHeight + LiftAllowance))
+                : initialLift;
+            if (maximumLift < initialLift) session.LowerPendingTo(maximumLift);
+        }
+
         public void ShowControls(Vector2 stick, bool raising, bool lowering, bool releasePressed)
         {
             Joystick.localRotation = neutralStick * Quaternion.Euler(-stick.y * 11, 0, stick.x * 11);
-            LiftButton.position = liftHome + Vector3.down * (raising ? .012f : 0);
-            LowerButton.position = lowerHome + Vector3.down * (lowering ? .012f : 0);
+            LiftButton.localPosition = liftHome + Vector3.down * (raising ? .012f : 0);
+            LowerButton.localPosition = lowerHome + Vector3.down * (lowering ? .012f : 0);
             bool releasePulse = releasing && releaseElapsed < OpenSeconds;
-            ReleaseButton.position = releaseHome + Vector3.down * (releasePressed || releasePulse ? .012f : 0);
+            ReleaseButton.localPosition = releaseHome + Vector3.down * (releasePressed || releasePulse ? .012f : 0);
         }
     }
 }
