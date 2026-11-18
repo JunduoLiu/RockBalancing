@@ -16,7 +16,9 @@ namespace RockBalancing
         internal bool StepRotationEnabled { get; private set; }
         internal Stone StepRotationTarget => StepRotationEnabled && active && rotating && CanAdjust ? selected : null;
         readonly Vector2[] stepTangents = new Vector2[ArcadeRotationGeometry.AxisCount];
-        bool stepUsed;
+        Vector3 stepAxis;
+        Vector2 stepTangent;
+        float stepTravel, blockedStepDirection;
         internal void SetStepRotation(bool enabled)
         {
             if (Cabinet == null || StepRotationEnabled == enabled) return;
@@ -255,7 +257,8 @@ namespace RockBalancing
         {
             start = previous = position;
             dragged = false;
-            stepUsed = false;
+            stepAxis = Vector3.zero;
+            stepTravel = blockedStepDirection = 0;
             blocked = IsUI(position);
             active = !blocked;
             selected = Session.Pending;
@@ -302,7 +305,7 @@ namespace RockBalancing
             {
                 if (StepRotationEnabled)
                 {
-                    if (!stepUsed && CanAdjust) RotateOneStep(p - start);
+                    if (CanAdjust) RotateInSteps(p - start, delta);
                     return;
                 }
                 var rotation = Quaternion.AngleAxis(-delta.x * RotationSensitivity, ViewCamera.transform.up) *
@@ -315,13 +318,37 @@ namespace RockBalancing
                 pitch = Mathf.Clamp(pitch - delta.y * OrbitSensitivity, Mathf.Clamp(MinimumPitch,-90,90), Mathf.Clamp(MaximumPitch,Mathf.Clamp(MinimumPitch,-90,90),90));
             }
         }
-        void RotateOneStep(Vector2 drag)
+        void RotateInSteps(Vector2 drag, Vector2 delta)
         {
-            stepUsed = true;
-            var axis = ArcadeRotationGeometry.GetSignedAxis(Cabinet.transform, drag, stepTangents);
+            if (stepAxis == Vector3.zero)
+            {
+                (stepAxis, stepTangent) = ArcadeRotationGeometry.GetDragAxis(Cabinet.transform, drag, stepTangents);
+                delta = drag;
+            }
+
+            float travel = Vector2.Dot(delta, stepTangent);
+            if (travel == 0) return;
+            if (blockedStepDirection == -Mathf.Sign(travel))
+            {
+                // Reverse from the last accepted tick, including after more motion into the obstacle.
+                stepTravel = blockedStepDirection = 0;
+            }
+            stepTravel += travel;
+            float tick = Mathf.Max(32, Screen.height * .04f);
             float step = Mathf.Clamp(RotationStepDegrees, 1, 179);
-            var rotation = Quaternion.AngleAxis(step, axis) * selected.transform.rotation;
-            Session.AdjustRotationStep(selected, rotation);
+            while (Mathf.Abs(stepTravel) >= tick)
+            {
+                float direction = Mathf.Sign(stepTravel);
+                var rotation = Quaternion.AngleAxis(direction * step, stepAxis) * selected.transform.rotation;
+                if (!Session.AdjustRotationStep(selected, rotation))
+                {
+                    stepTravel = 0;
+                    blockedStepDirection = direction;
+                    return;
+                }
+                stepTravel -= direction * tick;
+                blockedStepDirection = 0;
+            }
         }
 
         void End(Vector2 p)

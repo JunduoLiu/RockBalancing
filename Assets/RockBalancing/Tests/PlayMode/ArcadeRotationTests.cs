@@ -74,7 +74,7 @@ namespace RockBalancing.Tests
         }
 
         [UnityTest]
-        public IEnumerator OneDragTurnsOneSignedStepAroundAFixedCabinetAxis()
+        public IEnumerator OneDragCrossesAndReversesMultipleStepsOnEachCabinetAxis()
         {
             yield return SetStepMode();
             var center = StoneCenter();
@@ -82,30 +82,33 @@ namespace RockBalancing.Tests
                 stone.transform.position + new Vector3(-.016f, .017f, 0));
             float distance = Mathf.Max(40, .05f * Screen.height);
 
-            yield return Touch(UnityEngine.InputSystem.TouchPhase.Began, center);
-            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, center + Vector2.down * distance);
-            var turnedX = Quaternion.AngleAxis(15, Vector3.right);
-            ExpectPose(turnedX);
-            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, center + Vector2.down * (distance * 2));
-            ExpectPose(turnedX);
-            Assert.That(VisibleRingCount(), Is.EqualTo(3));
-            Assert.That(input.IsOperating, Is.True, "The gesture still owns the stone after its step.");
-            yield return Touch(UnityEngine.InputSystem.TouchPhase.Ended, center + Vector2.down * (distance * 2));
-
-            yield return Tap(center, Vector2.left * distance);
-            var turnedXY = Quaternion.AngleAxis(15, Vector3.up) * turnedX;
-            ExpectPose(turnedXY);
-            var downwardDiagonal = new Vector2(1, -1).normalized * distance;
-            yield return Tap(diagonalGrab, downwardDiagonal);
-            ExpectPose(Quaternion.AngleAxis(15, Vector3.forward) * turnedXY);
-            yield return Tap(diagonalGrab, -downwardDiagonal);
-            ExpectPose(turnedXY);
-            yield return Tap(center, Vector2.right * distance);
-            ExpectPose(turnedX);
-            yield return Tap(center, Vector2.up * distance);
-            ExpectPose(Quaternion.identity);
+            foreach (float step in new[] { 15f, 30f })
+            {
+                input.RotationStepDegrees = step;
+                yield return DragAndReverse(center, Vector2.down * distance, Vector3.right, step);
+                yield return DragAndReverse(center, Vector2.left * distance, Vector3.up, step);
+                yield return DragAndReverse(diagonalGrab, new Vector2(1, -1).normalized * distance, Vector3.forward, step);
+            }
             Assert.That(session.Pending, Is.SameAs(stone));
             Assert.That(stone.Released, Is.False);
+        }
+
+        IEnumerator DragAndReverse(Vector2 grab, Vector2 increment, Vector3 axis, float step)
+        {
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Began, grab);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, grab + increment);
+            ExpectPose(Quaternion.AngleAxis(step, axis));
+            // A fast sample may cross several ticks in one frame.
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, grab + increment * 3.5f);
+            ExpectPose(Quaternion.AngleAxis(step * 4, axis));
+            Assert.That(VisibleRingCount(), Is.EqualTo(3));
+            Assert.That(input.IsOperating, Is.True);
+
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, grab + increment * 2);
+            ExpectPose(Quaternion.AngleAxis(step * 3, axis));
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, grab - increment * .1f);
+            ExpectPose(Quaternion.identity);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Ended, grab - increment * .1f);
         }
 
         [UnityTest]
