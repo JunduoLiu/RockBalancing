@@ -15,7 +15,7 @@ namespace RockBalancing
                 tangents[i] = PositiveTangent(Project(GesturePriority[i], cabinet, camera, origin, 1), grab);
         }
 
-        public static Vector3 GetSignedAxis(Transform cabinet, Vector2 drag, Vector2[] tangents)
+        public static (Vector3 Axis, Vector2 Tangent) GetDragAxis(Transform cabinet, Vector2 drag, Vector2[] tangents)
         {
             var direction = drag.normalized;
             int choice = 0;
@@ -28,7 +28,7 @@ namespace RockBalancing
                 choice = i;
                 alignment = candidate;
             }
-            return cabinet.TransformDirection(Plane(GesturePriority[choice]).Normal) * Mathf.Sign(alignment);
+            return (cabinet.TransformDirection(Plane(GesturePriority[choice]).Normal), tangents[choice]);
         }
 
         public static (Vector2 Center, Vector2 U, Vector2 V, Vector2 CameraSide) Project(
