@@ -23,6 +23,7 @@ namespace RockBalancing
         GameObject controls, confirmation;
         RectTransform actionBar;
         ArcadeConsole arcadeConsole;
+        ArcadeFaceButton previousFace, nextFace;
         readonly Color ink = new Color(.16f, .22f, .23f);
         readonly Color paper = new Color(.96f, .95f, .91f, .96f);
 
@@ -56,6 +57,8 @@ namespace RockBalancing
                 BuildOriginalControls();
             else
             {
+                previousFace = BuildFaceButton("Previous cabinet face", -1);
+                nextFace = BuildFaceButton("Next cabinet face", 1);
                 var deck = Panel(Root, "Cabinet controls", Vector2.zero, Vector2.one, Color.clear, false);
                 controls = deck.gameObject;
                 arcadeConsole = new ArcadeConsole(this, deck, Input.Cabinet);
@@ -143,11 +146,13 @@ namespace RockBalancing
             if (controls == null || Session == null) return;
             UpdateActionLayout();
             RestartButton.interactable = !Input.Modal && !Session.ShareBusy;
-            controls.SetActive(!Session.Waiting);
+            controls.SetActive(!Session.Waiting && (Input.Cabinet == null || Input.Cabinet.IsFront));
             retryButton.gameObject.SetActive(Session.Waiting);
             ReleaseButton.interactable = Input.CanAct;
             if (DiscardButton != null) DiscardButton.interactable = Input.CanAct;
-            arcadeConsole?.Layout();
+            previousFace?.Layout();
+            nextFace?.Layout();
+            if (controls.activeSelf) arcadeConsole?.Layout();
             HeightLabel.text = Session.Stabilizing ? "stablizing" : Session.CurrentHeightMm + " mm";
             HeightLabel.fontSize = HeightLabel.resizeTextMaxSize = Session.Stabilizing ? 28 : 44;
             ShareButton.interactable = Session.CanShare && !Input.Modal;
@@ -158,6 +163,14 @@ namespace RockBalancing
                 UpdateEdge(pendingEdge,Session.Pending.transform.position,"待摆石头");
             else
                 pendingEdge.transform.parent.gameObject.SetActive(false);
+        }
+        ArcadeFaceButton BuildFaceButton(string name, int direction)
+        {
+            var anchor = new Vector2(direction < 0 ? 0 : 1, .55f);
+            var rect = Panel(Root, name, anchor, anchor, paper, true);
+            var button = rect.gameObject.AddComponent<ArcadeFaceButton>();
+            button.Initialize(this, direction, ink);
+            return button;
         }
         Button ActionButton(Transform parent, string title, string icon, UnityEngine.Events.UnityAction action)
         {

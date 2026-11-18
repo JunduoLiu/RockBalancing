@@ -11,7 +11,14 @@ namespace RockBalancing
         public GameSession Session;
         public Camera ViewCamera;
         public ArcadeCabinet Cabinet;
+        int cabinetTurn;
         public bool IsOperating => Adjusting || (active && rotating) || keyboardHeld;
+        internal bool ShowCabinetArrows => !Modal && !IsOperating;
+        internal bool CanTurnCabinet => Cabinet != null && ShowCabinetArrows && !focusLost && !paused && browserFocused;
+        internal void RequestCabinetTurn(int direction)
+        {
+            if (CanTurnCabinet) cabinetTurn = direction;
+        }
         public ObservationOcclusion Occlusion { get; private set; }
         bool modal;
         public bool Modal
@@ -78,6 +85,8 @@ namespace RockBalancing
         {
             yaw = 25; pitch = 16; distance = 3.8f;
             target = Session.Pending != null ? Session.Pending.transform.position : new Vector3(0, Session.BaseTop + .28f, 0);
+            Cabinet?.ResetFace();
+            cabinetTurn = 0;
             CancelForFocusLoss();
         }
         public void CancelGesture() { active = false; selected = null; touchId = -1; pinch = 0; }
@@ -90,7 +99,8 @@ namespace RockBalancing
             foreach(var button in GetComponentsInChildren<StoneActionButton>(true))button.Cancel();
         }
         void CancelForStoneChange() => CancelForFocusLoss();
-        public bool CanAdjust => !Modal && !focusLost && !paused && browserFocused && !requireNeutral && Session != null && Session.Pending != null;
+        public bool CanAdjust => !Modal && !focusLost && !paused && browserFocused && !requireNeutral &&
+            Session != null && Session.Pending != null && (Cabinet == null || Cabinet.IsFront);
         public bool CanAct => CanAdjust && Time.unscaledTimeAsDouble >= nextActionTime;
         public bool ActOnStone(Stone expected, bool discard)
         {
@@ -329,6 +339,14 @@ namespace RockBalancing
             MoveHeldStone();
             if (Cabinet != null)
             {
+                // The UI can deliver a click before the scene reads a stone press in the same frame.
+                if (cabinetTurn != 0 && CanTurnCabinet)
+                {
+                    CancelGesture();
+                    Cabinet.Turn(cabinetTurn);
+                    if (MovementKeyHeld()) requireNeutral = true;
+                }
+                cabinetTurn = 0;
                 Cabinet.PlaceCamera(ViewCamera);
                 Cabinet.Follow(Session.Pending);
                 return;
