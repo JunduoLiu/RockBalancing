@@ -119,7 +119,7 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1 &103346515
+--- !u!1 &134078409
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -127,8 +127,8 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 103346517}
-  - component: {fileID: 103346516}
+  - component: {fileID: 134078411}
+  - component: {fileID: 134078410}
   m_Layer: 0
   m_Name: Rock Balancing
   m_TagString: Untagged
@@ -136,13 +136,13 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &103346516
+--- !u!114 &134078410
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 103346515}
+  m_GameObject: {fileID: 134078409}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 28494f36b9091b64a9eda5349dd77b87, type: 3}
@@ -151,13 +151,17 @@ MonoBehaviour:
   Typeface: {fileID: 12800000, guid: 16bb33d21d97b354a913d1bd0c037e80, type: 3}
   StoneMaterial: {fileID: 2100000, guid: efd37271ff5c0db4f9918526b8c624eb, type: 2}
   GuideMaterial: {fileID: 2100000, guid: 264e98806d7690547b9f27140f35b277, type: 2}
---- !u!4 &103346517
+  StoneShapes:
+    FlatProbability: 0.85
+    MinimumThicknessRatio: 0.18
+    MaximumThicknessRatio: 0.28
+--- !u!4 &134078411
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 103346515}
+  m_GameObject: {fileID: 134078409}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -170,4 +174,4 @@ Transform:
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
-  - {fileID: 103346517}
+  - {fileID: 134078411}
