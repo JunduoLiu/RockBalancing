@@ -19,6 +19,7 @@ namespace RockBalancing
         public float RotationStepDegrees { get; set; }
         internal bool StepRotationEnabled { get; private set; }
         internal Stone StepRotationTarget => StepRotationEnabled && active && rotating && CanAdjust ? selected : null;
+        internal ArcadeFaceSnap FaceSnap { get; } = new();
         readonly Vector2[] stepTangents = new Vector2[ArcadeRotationGeometry.AxisCount];
         Vector3 stepAxis;
         Vector2 stepTangent;
@@ -27,6 +28,7 @@ namespace RockBalancing
         {
             if (Cabinet == null) return;
             CancelGesture();
+            FaceSnap.Clear();
             StepRotationEnabled = step > 0;
             if (StepRotationEnabled) RotationStepDegrees = step;
         }
@@ -105,6 +107,7 @@ namespace RockBalancing
         {
             active = false;
             selected = null;
+            FaceSnap.EndDrag();
             touchId = -1;
             pinch = 0;
             if (!orbitingCabinet) return;
@@ -123,6 +126,7 @@ namespace RockBalancing
         }
         void CancelForStoneChange()
         {
+            FaceSnap.Clear();
             if (ArcadeControlsAvailable) CancelStoneOperations();
         }
         public bool CanAdjust => !Modal && !focusLost && !paused && browserFocused && !requireNeutral &&
@@ -329,7 +333,11 @@ namespace RockBalancing
                 cabinetAzimuth = Mathf.DeltaAngle(0, cabinetAzimuth + travel);
                 return;
             }
-            if ((p - start).magnitude > Mathf.Max(8, Screen.height * .008f)) dragged = true;
+            if (!dragged && (p - start).magnitude > Mathf.Max(8, Screen.height * .008f))
+            {
+                dragged = true;
+                if (Cabinet != null && rotating) delta = p - start;
+            }
             if (!dragged) return;
             if (rotating && selected != null)
             {
@@ -338,9 +346,11 @@ namespace RockBalancing
                     if (CanAdjust) RotateInSteps(p - start, delta);
                     return;
                 }
-                var rotation = Quaternion.AngleAxis(-delta.x * RotationSensitivity, ViewCamera.transform.up) *
-                               Quaternion.AngleAxis(delta.y * RotationSensitivity, ViewCamera.transform.right) * selected.transform.rotation;
-                Session.Adjust(selected, selected.transform.position, rotation);
+                if (delta == Vector2.zero) return;
+                var change = Quaternion.AngleAxis(-delta.x * RotationSensitivity, ViewCamera.transform.up) *
+                             Quaternion.AngleAxis(delta.y * RotationSensitivity, ViewCamera.transform.right);
+                if (Cabinet == null) Session.Adjust(selected, selected.transform.position, change * selected.transform.rotation);
+                else if (CanAdjust) FaceSnap.Rotate(Session, selected, change);
             }
             else
             {
@@ -383,7 +393,7 @@ namespace RockBalancing
 
         void End(Vector2 p)
         {
-            if (orbitingCabinet || StepRotationTarget != null) Move(p);
+            if (orbitingCabinet || StepRotationTarget != null || (Cabinet != null && active && rotating && CanAdjust)) Move(p);
             CancelGesture();
         }
         public void HoldPlanar(bool held)
@@ -442,6 +452,7 @@ namespace RockBalancing
                 }
                 Cabinet.Follow(Session);
                 Cabinet.PlaceCamera(ViewCamera, cabinetAzimuth);
+                FaceSnap.Refresh(Session);
                 return;
             }
             // A scene gesture owns the observation centre until all its fingers end.
