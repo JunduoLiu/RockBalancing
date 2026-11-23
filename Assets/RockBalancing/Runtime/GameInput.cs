@@ -346,11 +346,10 @@ namespace RockBalancing
                     if (CanAdjust) RotateInSteps(p - start, delta);
                     return;
                 }
-                if (delta == Vector2.zero) return;
                 var change = Quaternion.AngleAxis(-delta.x * RotationSensitivity, ViewCamera.transform.up) *
                              Quaternion.AngleAxis(delta.y * RotationSensitivity, ViewCamera.transform.right);
                 if (Cabinet == null) Session.Adjust(selected, selected.transform.position, change * selected.transform.rotation);
-                else if (CanAdjust) FaceSnap.Rotate(Session, selected, change);
+                else if (CanAdjust && delta != Vector2.zero) FaceSnap.Rotate(Session, selected, change);
             }
             else
             {
