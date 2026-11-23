@@ -12,7 +12,7 @@ namespace RockBalancing
         const float HandoffMargin = .05f;
         const float FadeSeconds = .24f;
         readonly ArcadeLandingFaces landing = new();
-        readonly List<(FaceMatch Match, float Error, bool Entered)> candidates = new();
+        readonly List<(FaceMatch Match, Quaternion Approach, float Progress, float Error, bool Entered)> candidates = new();
         List<FaceMatch> matches = new(), trialMatches = new();
         Quaternion? rawRotation;
         bool attached;
@@ -27,24 +27,57 @@ namespace RockBalancing
             public readonly StoneFace HangingFace;
             public readonly Collider Support;
             public readonly StoneFace SupportFace;
-            readonly Vector3 target;
+            internal readonly Vector3 Target;
 
             public FaceMatch(StoneFace hangingFace, ArcadeLandingFaces.Projection support)
             {
                 HangingFace = hangingFace;
                 Support = support.Collider;
                 SupportFace = support.Face;
-                target = -support.Normal;
+                Target = -support.Normal;
             }
 
             public float Error(Quaternion rotation)
             {
                 var normal = rotation * HangingFace.LocalNormal;
-                return Mathf.Atan2(Vector3.Cross(normal, target).magnitude, Vector3.Dot(normal, target)) * Mathf.Rad2Deg;
+                return Mathf.Atan2(Vector3.Cross(normal, Target).magnitude, Vector3.Dot(normal, Target)) * Mathf.Rad2Deg;
             }
 
             public Quaternion Aligned(Quaternion rotation) =>
-                Quaternion.FromToRotation(rotation * HangingFace.LocalNormal, target) * rotation;
+                Quaternion.FromToRotation(rotation * HangingFace.LocalNormal, Target) * rotation;
+        }
+
+        readonly struct RotationArc
+        {
+            readonly Quaternion start, end;
+            readonly Vector3 axis;
+            readonly float degrees;
+
+            public RotationArc(Quaternion start, Quaternion end)
+            {
+                this.start = start;
+                this.end = end;
+                var turn = end * Quaternion.Inverse(start);
+                var imaginary = new Vector3(turn.x, turn.y, turn.z);
+                if (turn.w < 0) imaginary = -imaginary;
+                float magnitude = imaginary.magnitude;
+                axis = magnitude > 0 ? imaginary / magnitude : Vector3.zero;
+                degrees = 2 * Mathf.Atan2(magnitude, Mathf.Abs(turn.w)) * Mathf.Rad2Deg;
+            }
+
+            public float ClosestProgress(FaceMatch match)
+            {
+                var normal = start * match.HangingFace.LocalNormal;
+                // The component along the rotation axis is constant. In the plane
+                // across the axis, the closest point lines up with the target.
+                var perpendicular = normal - axis * Vector3.Dot(normal, axis);
+                float turn = Mathf.Atan2(Vector3.Dot(Vector3.Cross(axis, perpendicular), match.Target),
+                    Vector3.Dot(perpendicular, match.Target)) * Mathf.Rad2Deg;
+                if (turn > 0 && turn < degrees) return turn / degrees;
+                return match.Error(end) < match.Error(start) ? 1 : 0;
+            }
+
+            public Quaternion At(float progress) => Quaternion.AngleAxis(degrees * progress, axis) * start;
         }
 
         public void EndDrag() => rawRotation = null;
@@ -85,9 +118,7 @@ namespace RockBalancing
                 float error = current.Error(requested);
                 if (error <= EscapeAngle)
                 {
-                    // A closer face can take over before the old detent lets go.
-                    // The margin keeps the midpoint steady without filtering fine drag input.
-                    if (error > current.Error(previous) && TryCandidates(session, stone, previous, requested,
+                    if (TryCandidates(session, stone, previous, requested,
                         Mathf.Min(CaptureAngle, error - HandoffMargin), current, enteringOnly: false)) return;
                     if (TryAttach(session, stone, requested, current, requireMatch: false))
                     {
@@ -167,6 +198,10 @@ namespace RockBalancing
             float capture, FaceMatch current, bool enteringOnly)
         {
             if (capture <= 0) return false;
+            bool handingOff = current.HangingFace != null;
+            var arc = handingOff ? new RotationArc(previous, requested) : default;
+            float departure = handingOff ? arc.ClosestProgress(current) : 0;
+            if (departure >= 1) return false;
             candidates.Clear();
             var hangingFaces = StoneFace.Of(stone.Shape);
             var actual = stone.transform.rotation;
@@ -178,23 +213,45 @@ namespace RockBalancing
                 {
                     var candidate = new FaceMatch(hangingFace, support);
                     float error = candidate.Error(requested);
-                    if (error > capture) continue;
+                    if (error > CaptureAngle) continue;
                     if (hangingFace == current.HangingFace && candidate.Error(actual) <= ParallelTolerance) continue;
+                    var approach = requested;
+                    float progress = 1;
+                    if (handingOff)
+                    {
+                        // The sample may already have passed a nearby detent. Consider
+                        // the part of the path that moves away from the current one.
+                        float closest = arc.ClosestProgress(candidate);
+                        if (closest > departure && closest < 1)
+                        {
+                            var closestPose = arc.At(closest);
+                            float closestError = candidate.Error(closestPose);
+                            if (closestError + HandoffMargin < current.Error(closestPose))
+                            {
+                                progress = closest;
+                                approach = closestPose;
+                                error = closestError;
+                            }
+                        }
+                    }
+                    if (progress == 1 && error > capture) continue;
                     float previousError = candidate.Error(previous);
                     if (error >= previousError) continue;
                     bool entered = previousError > CaptureAngle;
                     if (enteringOnly && !entered) continue;
-                    candidates.Add((candidate, error, entered));
+                    candidates.Add((candidate, approach, progress, error, entered));
                 }
             }
             candidates.Sort((first, second) =>
             {
+                int pathOrder = first.Progress.CompareTo(second.Progress);
+                if (pathOrder != 0) return pathOrder;
                 int priority = second.Entered.CompareTo(first.Entered);
                 return priority == 0 ? first.Error.CompareTo(second.Error) : priority;
             });
             foreach (var candidate in candidates)
             {
-                if (!TryAttach(session, stone, requested, candidate.Match, requireMatch: true)) continue;
+                if (!TryAttach(session, stone, candidate.Approach, candidate.Match, requireMatch: true)) continue;
                 // Start the escape distance from the corrected pose in either direction.
                 rawRotation = stone.transform.rotation;
                 return true;
