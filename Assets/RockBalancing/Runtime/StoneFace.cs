@@ -61,7 +61,7 @@ namespace RockBalancing
             public void AddEdge(Vector3 start, Vector3 end)
             {
                 // Compare positions because flat-shaded meshes duplicate vertices at edges.
-                int reverse = boundary.FindIndex(edge => edge.Start == end && edge.End == start);
+                int reverse = boundary.FindIndex(edge => edge.Start.Equals(end) && edge.End.Equals(start));
                 if (reverse >= 0) boundary.RemoveAt(reverse);
                 else boundary.Add((start, end));
             }
@@ -73,7 +73,7 @@ namespace RockBalancing
                 for (int i = 0; i < corners.Length; i++)
                 {
                     corners[i] = edge.Start;
-                    edge = boundary.Find(next => next.Start == edge.End);
+                    edge = boundary.Find(next => next.Start.Equals(edge.End));
                 }
                 return new StoneFace(normal, corners);
             }

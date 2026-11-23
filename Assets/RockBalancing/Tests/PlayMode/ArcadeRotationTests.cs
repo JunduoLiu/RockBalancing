@@ -152,6 +152,7 @@ namespace RockBalancing.Tests
 
             yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, caught + Vector2.down * 11);
             Assert.That(Quaternion.Angle(stone.transform.rotation, poseAtFirstCatch), Is.EqualTo(4.95f).Within(.1f));
+            yield return new WaitForSecondsRealtime(.05f);
             Assert.That(outline.canvasRenderer.GetAlpha(), Is.LessThan(1));
             yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, caught + Vector2.down * 4);
             Assert.That(Vector3.Angle(stone.transform.up, support.transform.up), Is.LessThan(.1f));
