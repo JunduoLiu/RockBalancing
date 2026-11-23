@@ -26,6 +26,10 @@ namespace Herlilan.VisualLab
         Vector2 tapStart;
         float tapTime;
         RectTransform pads;
+        readonly RectTransform[] touchTargets = new RectTransform[3];
+        readonly Vector3[] touchCorners = new Vector3[4];
+        readonly Rect[] lastTouchRects = new Rect[3];
+        DragPad movePad, liftPad;
         [SerializeField] Shader veilShader;
         [SerializeField] Shader styleShader;
         RectTransform styleButton;
@@ -71,19 +75,20 @@ namespace Herlilan.VisualLab
             pads = new GameObject("Adjustments", typeof(RectTransform)).GetComponent<RectTransform>();
             pads.SetParent(root.transform, false);
             pads.anchorMin = pads.anchorMax = pads.pivot = new Vector2(.5f, 0);
-            pads.sizeDelta = new Vector2(146, 86);
-            AddPad(false, -30);
-            AddPad(true, 48);
+            pads.sizeDelta = new Vector2(212, 116);
+            AddPad(false, -48);
+            AddPad(true, 64);
             styleMaterial = new Material(styleShader);
             stylePass = new LandscapePass(styleMaterial);
-            styleButton = Frost(root.transform, "Cycle landscape style", Vector2.one * 52, .48f, true);
+            styleButton = Frost(root.transform, "Cycle landscape style", Vector2.one * 76, .48f, true);
+            touchTargets[2] = styleButton;
             styleButton.anchorMin = styleButton.anchorMax = styleButton.pivot = Vector2.one;
             var button = styleButton.gameObject.AddComponent<Button>();
             button.targetGraphic = styleButton.GetComponent<Image>();
             button.onClick.AddListener(CycleLook);
             for (int layer = 0; layer < 2; layer++)
             {
-                var swatch = Frost(styleButton, "Swatch", new Vector2(17, 13), .86f, false);
+                var swatch = Frost(styleButton, "Swatch", new Vector2(24, 18), .86f, false);
                 swatch.anchoredPosition = Vector2.one * (layer == 0 ? -3 : 3);
                 swatch.localRotation = Quaternion.Euler(0, 0, -20);
             }
@@ -129,15 +134,56 @@ namespace Herlilan.VisualLab
 
         void AddPad(bool vertical, float offset)
         {
-            var surface = Frost(pads, vertical ? "Lift" : "Move", new Vector2(vertical ? 50 : 86, 86), .32f, true);
+            var surface = Frost(pads, vertical ? "Lift" : "Move", new Vector2(vertical ? 84 : 116, 116), .32f, true);
             surface.anchoredPosition = Vector2.right * offset;
             var pad = surface.gameObject.AddComponent<DragPad>();
             pad.VerticalOnly = vertical;
             pad.CanBegin = () => input.CanAdjust;
             if (vertical) { pad.Held = input.HoldHeight; pad.Changed = input.RaiseStone; }
             else { pad.Held = input.HoldPlanar; pad.Changed = input.MoveStone; }
-            pad.Handle = Frost(surface, "Handle", vertical ? new Vector2(26, 14) : Vector2.one * 28, .78f, false);
+            pad.Handle = Frost(surface, "Handle", vertical ? new Vector2(37, 19) : Vector2.one * 38, .78f, false);
+            touchTargets[vertical ? 1 : 0] = surface;
+            if (vertical) liftPad = pad; else movePad = pad;
         }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        static extern void SB_TouchRect(int slot, float left, float top, float width, float height);
+
+        void SyncTouchRects()
+        {
+            var root = (RectTransform)canvas.transform;
+            var screen = root.rect;
+            for (int slot = 0; slot < touchTargets.Length; slot++)
+            {
+                touchTargets[slot].GetWorldCorners(touchCorners);
+                Vector3 low = root.InverseTransformPoint(touchCorners[0]);
+                Vector3 high = root.InverseTransformPoint(touchCorners[2]);
+                var rect = new Rect((low.x-screen.xMin)/screen.width, (screen.yMax-high.y)/screen.height,
+                    (high.x-low.x)/screen.width, (high.y-low.y)/screen.height);
+                if (rect == lastTouchRects[slot]) continue;
+                lastTouchRects[slot] = rect;
+                SB_TouchRect(slot, rect.x, rect.y, rect.width, rect.height);
+            }
+        }
+
+        [UnityEngine.Scripting.Preserve]
+        public void WebControl(string command)
+        {
+            if (command == "style") { CycleLook(); return; }
+            string[] fields = command.Split(',');
+            if (fields.Length < 2) return;
+            var pad = fields[0] == "lift" ? liftPad : movePad;
+            if (fields[1] == "end") { pad.Held(false); pad.Changed(Vector2.zero); pad.Handle.anchoredPosition = Vector2.zero; return; }
+            if (!input.CanAdjust || fields.Length != 4) return;
+            if (fields[1] == "start") pad.Held(true);
+            var culture = System.Globalization.CultureInfo.InvariantCulture;
+            var value = Vector2.ClampMagnitude(new Vector2(float.Parse(fields[2], culture), float.Parse(fields[3], culture)), 1);
+            pad.Changed(value);
+            var bounds = ((RectTransform)pad.transform).rect;
+            pad.Handle.anchoredPosition = value * (.36f * Mathf.Min(bounds.width, bounds.height));
+        }
+#endif
 
         RectTransform Frost(Transform parent, string label, Vector2 size, float alpha, bool interactive)
         {
@@ -276,6 +322,9 @@ namespace Herlilan.VisualLab
             Rect safe = Screen.safeArea;
             styleButton.anchoredPosition = new Vector2((safe.xMax - Screen.width) / scale - 14, (safe.yMax - Screen.height) / scale - 14);
             pads.anchoredPosition = new Vector2((safe.center.x - Screen.width * .5f) / scale, safe.yMin / scale + 18);
+#if UNITY_WEBGL && !UNITY_EDITOR
+            SyncTouchRects();
+#endif
         }
     }
 }
