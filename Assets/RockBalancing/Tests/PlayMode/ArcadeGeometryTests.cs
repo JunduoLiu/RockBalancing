@@ -78,17 +78,31 @@ namespace RockBalancing.Tests
                 Assert.That(dimensions.z, Is.LessThanOrEqualTo(dimensions.x), sample);
                 Assert.That(dimensions.y / dimensions.z, Is.InRange(.25f, .60f), sample);
                 float area = faces.Sum(face => face.Sum(triangle => triangle.Area));
+                Physics.SyncTransforms();
                 for (int i = 0; i < faces.Count; i++)
                 {
                     var face = faces[i];
-                    Assert.That(face.Sum(triangle => triangle.Area) / area, Is.GreaterThanOrEqualTo(.03f), sample);
+                    float faceArea = face.Sum(triangle => triangle.Area);
+                    Assert.That(faceArea / area, Is.GreaterThanOrEqualTo(.03f), sample);
                     var normal = face[0].Normal;
+                    var center = Vector3.zero;
+                    foreach (var triangle in face)
+                        center += (triangle.Corners[0] + triangle.Corners[1] + triangle.Corners[2]) * triangle.Area;
+                    var surface = stone.transform.TransformPoint(center / (3f * faceArea));
+                    var direction = stone.transform.TransformDirection(normal);
+                    var ray = new Ray(surface + direction * .02f, -direction);
+                    Assert.That(stone.Shape.Raycast(ray, out var contact, .04f), Is.True, sample);
+                    Assert.That(Vector3.Distance(contact.point, surface), Is.LessThan(.0005f), sample);
+                    Assert.That(Vector3.Dot(contact.normal, direction), Is.GreaterThan(.999f), sample);
                     if (normal.y > .70f && normal.y < .999f)
                         inclinedTopNormals.Add(Vector2Int.RoundToInt(new Vector2(normal.x, normal.z) * 10));
                     for (int j = i + 1; j < faces.Count; j++)
                     {
                         if (face.Any(a => faces[j].Any(a.SharesEdge)))
-                            Assert.That(180f - Vector3.Angle(normal, faces[j][0].Normal), Is.InRange(25f, 155f), sample);
+                            Assert.That(180f - Vector3.Angle(normal, faces[j][0].Normal), Is.InRange(25f, 155f),
+                                $"{sample} ({mesh.name}): normals {normal:F6}, {faces[j][0].Normal:F6}; " +
+                                $"areas {string.Join(", ", face.Select(t => t.Area.ToString("G8")))}, " +
+                                $"{string.Join(", ", faces[j].Select(t => t.Area.ToString("G8")))}");
                     }
                 }
             }
@@ -165,8 +179,11 @@ namespace RockBalancing.Tests
             {
                 Corners = new[] { a, b, c };
                 var cross = Vector3.Cross(b - a, c - a);
-                Normal = cross.normalized;
-                Area = cross.magnitude * .5f;
+                float doubleArea = cross.magnitude;
+                Assert.That(doubleArea, Is.GreaterThan(0), "The visible mesh contains a degenerate triangle.");
+                // Vector3.normalized rounds small cross products to zero even for valid triangles.
+                Normal = cross / doubleArea;
+                Area = doubleArea * .5f;
             }
 
             public bool SharesEdge(Triangle other) =>
