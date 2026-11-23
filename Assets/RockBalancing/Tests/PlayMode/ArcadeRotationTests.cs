@@ -171,6 +171,211 @@ namespace RockBalancing.Tests
         }
 
         [UnityTest]
+        public IEnumerator ParallelTowerTopFacesShareOneDetentAndBothOutlines()
+        {
+            UseKnownFlatStones();
+            var slope = Quaternion.AngleAxis(16, Vector3.right);
+            var left = PlaceSupport(-.12f, slope);
+            var right = PlaceSupport(.12f, slope);
+            var initial = Quaternion.AngleAxis(2, Vector3.right);
+            var position = new Vector3(0, session.BaseTop + .39f, 0);
+            Assert.That(session.Adjust(stone, position, initial), Is.True);
+            yield return null;
+
+            var grab = StoneCenter();
+            var caught = grab + Vector2.down * 26;
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Began, grab);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, caught);
+            ExpectPose(slope);
+            ExpectSupportOutline(left, true);
+            ExpectSupportOutline(right, true);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Ended, caught);
+            yield return MovePendingAcross(-.18f);
+            ExpectPose(slope);
+            ExpectSupportOutline(left, true);
+            ExpectSupportOutline(right, false);
+            yield return MovePendingAcross(.18f);
+            ExpectPose(slope);
+            ExpectSupportOutline(left, false);
+            ExpectSupportOutline(right, true);
+            yield return MovePendingAcross(0);
+            ExpectSupportOutline(left, true);
+            ExpectSupportOutline(right, true);
+
+            grab = StoneCenter();
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Began, grab);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, grab + Vector2.down * 12);
+            ExpectPose(Quaternion.AngleAxis(21.4f, Vector3.right));
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Ended, grab + Vector2.down * 12);
+        }
+
+        [UnityTest]
+        public IEnumerator AContinuousDragVisitsSeparateTowerTopAnglesAndCanReverse()
+        {
+            UseKnownFlatStones();
+            var firstSlope = Quaternion.AngleAxis(16, Vector3.right);
+            var secondSlope = Quaternion.AngleAxis(32, Vector3.right);
+            var left = PlaceSupport(-.12f, firstSlope);
+            var right = PlaceSupport(.12f, secondSlope);
+            var position = new Vector3(0, session.BaseTop + .39f, 0);
+            Assert.That(session.Adjust(stone, position, Quaternion.AngleAxis(2, Vector3.right)), Is.True);
+            yield return null;
+
+            var grab = StoneCenter();
+            var firstCatch = grab + Vector2.down * 26;
+            var secondCatch = firstCatch + Vector2.down * 34;
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Began, grab);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, firstCatch);
+            ExpectPose(firstSlope);
+            ExpectSupportOutline(left, true);
+            ExpectSupportOutline(right, false);
+
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, firstCatch + Vector2.down * 12);
+            ExpectPose(Quaternion.AngleAxis(21.4f, Vector3.right));
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, secondCatch);
+            ExpectPose(secondSlope);
+            ExpectSupportOutline(left, false);
+            ExpectSupportOutline(right, true);
+
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, secondCatch + Vector2.up * 12);
+            ExpectPose(Quaternion.AngleAxis(26.6f, Vector3.right));
+            var reverseCatch = secondCatch + Vector2.up * 32;
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, reverseCatch);
+            ExpectPose(firstSlope);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Ended, reverseCatch);
+            yield return new WaitForSecondsRealtime(.3f);
+            ExpectPose(firstSlope);
+            ExpectSupportOutline(left, true);
+            ExpectSupportOutline(right, false);
+            Assert.That(stone.transform.position, Is.EqualTo(position));
+
+            yield return MovePendingAcross(.18f);
+            yield return new WaitForSecondsRealtime(.3f);
+            ExpectPose(firstSlope);
+            Assert.That(MatchOutline(), Is.Null);
+            yield return Tap(StoneCenter(), Vector2.up * 26);
+            ExpectPose(Quaternion.AngleAxis(4.3f, Vector3.right));
+            yield return Tap(StoneCenter(), Vector2.down * 22);
+            ExpectPose(Quaternion.AngleAxis(14.2f, Vector3.right));
+            Assert.That(MatchOutline(), Is.Null);
+            yield return Tap(StoneCenter(), Vector2.down * 39);
+            ExpectPose(secondSlope);
+            ExpectSupportOutline(left, false);
+            ExpectSupportOutline(right, true);
+
+            yield return Tap(ControlPoint("Release"));
+            Assert.That(MatchOutline(), Is.Null);
+            Assert.That(stone.Released, Is.True);
+            Assert.That(session.Pending, Is.Not.SameAs(stone));
+            for (int i = 0; i < 5; i++) yield return new WaitForFixedUpdate();
+            Assert.That(stone.Body.position.y, Is.LessThan(position.y - .01f));
+        }
+
+        IEnumerator MovePendingAcross(float target)
+        {
+            var keyboard = InputSystem.AddDevice<Keyboard>();
+            keyboard.MakeCurrent();
+            try
+            {
+                float direction = Mathf.Sign(target - stone.transform.position.x);
+                // The cabinet faces world -Z, so A moves east and D moves west.
+                InputSystem.QueueStateEvent(keyboard, new KeyboardState(direction > 0 ? Key.A : Key.D));
+                float deadline = Time.realtimeSinceStartup + 4;
+                while (direction * (target - stone.transform.position.x) > 0 && Time.realtimeSinceStartup < deadline)
+                    yield return null;
+                InputSystem.QueueStateEvent(keyboard, new KeyboardState());
+                yield return null;
+                yield return null;
+                Assert.That(stone.transform.position.x, Is.EqualTo(target).Within(.04f));
+            }
+            finally
+            {
+                InputSystem.RemoveDevice(keyboard);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator APartlyCoveredSupportStillCatchesThroughANarrowOpenStrip()
+        {
+            var slope = Quaternion.AngleAxis(16, Vector3.right);
+            PlaceCoveredSupport(slope, .004f);
+            yield return null;
+            yield return Tap(StoneCenter(), Vector2.down * 26);
+            ExpectPose(slope);
+        }
+
+        [UnityTest]
+        public IEnumerator ACompletelyCoveredSupportOffersNoDetent()
+        {
+            var slope = Quaternion.AngleAxis(16, Vector3.right);
+            PlaceCoveredSupport(slope, -.004f);
+            yield return null;
+            yield return Tap(StoneCenter(), Vector2.down * 26);
+            ExpectPose(Quaternion.AngleAxis(13.7f, Vector3.right));
+            Assert.That(MatchOutline(), Is.Null);
+        }
+
+        void PlaceCoveredSupport(Quaternion slope, float exposedWidth)
+        {
+            // The second generated slab spans the first in depth. Position its edge
+            // to leave either a thin vertical path or complete cover.
+            var seeds = new[] { 504, 368, 123 };
+            int next = 0;
+            session.Initialize(new StoneFactory(root.GetComponent<GameBootstrap>().StoneMaterial,
+                new StoneShapeSettings { FlatProbability = 1 }, () => seeds[Mathf.Min(next++, seeds.Length - 1)],
+                arcade: true), session.Base, session.Ground);
+            var lower = PlaceSupport(-.04f, slope);
+            float lowerLeft = lower.transform.position.x + lower.OwnedMesh.bounds.min.x;
+            float coverX = lowerLeft - stone.OwnedMesh.bounds.min.x + exposedWidth;
+            PlaceSupport(coverX, Quaternion.identity, lower.HighestPoint());
+            Assert.That(session.Adjust(stone, new Vector3(-.04f, session.BaseTop + .39f, 0),
+                Quaternion.AngleAxis(2, Vector3.right)), Is.True);
+        }
+
+        Stone PlaceSupport(float x, Quaternion rotation, float? restHeight = null)
+        {
+            var support = session.Pending;
+            float bottom = support.OwnedMesh.vertices.Min(vertex => (rotation * vertex).y);
+            Assert.That(session.Adjust(support, new Vector3(x, support.transform.position.y, 0), rotation), Is.True);
+            Assert.That(session.Adjust(support, new Vector3(x, (restHeight ?? session.BaseTop) - bottom + .002f, 0),
+                rotation), Is.True);
+            Assert.That(session.Release(support), Is.True);
+            // Keep a reproducible tower top while the next stone is positioned and rotated.
+            support.Body.constraints = RigidbodyConstraints.FreezeAll;
+            support.Body.interpolation = RigidbodyInterpolation.None;
+            support.Body.Sleep();
+            stone = session.Pending;
+            return support;
+        }
+
+        void ExpectSupportOutline(Stone support, bool visible)
+        {
+            var mesh = VisibleOutlineMesh();
+            float top = support.OwnedMesh.vertices.Max(vertex => vertex.y);
+            var corners = support.OwnedMesh.vertices.Where(vertex => Mathf.Abs(vertex.y - top) < .00001f)
+                .Select(vertex => (Vector2)input.ViewCamera.WorldToScreenPoint(support.transform.TransformPoint(vertex))).ToArray();
+            // Sample the outside half of the face, away from the pending stone and neighboring support.
+            bool left = support.transform.position.x < 0;
+            float outer = left ? corners.Max(corner => corner.x) : corners.Min(corner => corner.x);
+            float middle = (corners.Max(corner => corner.x) + corners.Min(corner => corner.x)) * .5f;
+            float low = corners.Min(corner => corner.y) - 3;
+            float high = corners.Max(corner => corner.y) + 3;
+            bool found = mesh.Any(point => point.x >= Mathf.Min(middle, outer) - 2 &&
+                point.x <= Mathf.Max(middle, outer) + 2 && point.y >= low && point.y <= high);
+            Assert.That(found, Is.EqualTo(visible), $"Outline on tower stone at x={support.transform.position.x:F2}");
+        }
+
+        Vector2[] VisibleOutlineMesh()
+        {
+            Canvas.ForceUpdateCanvases();
+            var outline = MatchOutline();
+            if (outline == null || outline.canvasRenderer.GetAlpha() < .99f) return System.Array.Empty<Vector2>();
+            var mesh = outline.canvasRenderer.GetMesh();
+            return mesh.vertices.Select(vertex => RectTransformUtility.WorldToScreenPoint(null,
+                outline.rectTransform.TransformPoint(vertex))).ToArray();
+        }
+
+        [UnityTest]
         public IEnumerator FreeDragStopsAgainstTheBaseAndCanReverse()
         {
             UseKnownFlatStones();
