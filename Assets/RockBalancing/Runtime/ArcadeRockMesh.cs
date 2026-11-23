@@ -9,23 +9,52 @@ namespace RockBalancing
         {
             var rng = new System.Random(seed);
             float Range(float low, float high) => Mathf.Lerp(low, high, (float)rng.NextDouble());
-            bool flat = rng.NextDouble() < Mathf.Clamp01(settings.FlatProbability);
             float length = Range(.15f, .23f);
-            float width = length * (flat ? Range(.68f, .96f) : Range(.37f, .48f));
-            float min = Mathf.Clamp(settings.MinimumThicknessRatio, .12f, .4f);
-            float max = Mathf.Clamp(settings.MaximumThicknessRatio, min, .4f);
-            float height = length * (flat ? Range(min, max) : Range(.33f, .45f));
-            var heading = Quaternion.Euler(0, Range(0, 360), 0);
-            var outline = new Vector3[rng.Next(6, 9)];
-            // Ordered points on an ellipse give irregular edge lengths while keeping the hull convex.
-            for (int i = 0; i < outline.Length; i++)
+            bool broad = rng.NextDouble() < Mathf.Clamp01(settings.FlatProbability);
+            float width = length * (broad ? Range(.65f, .94f) : Range(.42f, .53f));
+            for (int attempt = 0; attempt < 24; attempt++)
             {
-                float angle = (i + Range(-.2f, .2f)) * 2 * Mathf.PI / outline.Length;
-                outline[i] = heading * new Vector3(Mathf.Cos(angle) * length * .5f, 0, Mathf.Sin(angle) * width * .5f);
+                var planes = SidePlanes(length, width);
+                planes.Add(new Plane(Vector3.down, Vector3.zero));
+
+                var corners = new List<Vector2> { new(-1, -1), new(-1, 1), new(1, -1), new(1, 1) };
+                int cuts = rng.Next(4);
+                for (int i = 0; i < cuts; i++)
+                {
+                    int index = rng.Next(corners.Count);
+                    var corner = corners[index];
+                    corners.RemoveAt(index);
+                    float x = corner.x * Range(.82f, 1.18f);
+                    float z = corner.y * Range(.82f, 1.18f);
+                    planes.Add(CutPlane(new Vector3(x / length, Range(-.5f, .5f) / width, z / width),
+                        (Mathf.Abs(x) + Mathf.Abs(z)) * .5f - Range(.20f, .35f)));
+                }
+
+                float thickness = width * Range(.31f, .50f);
+                bool parallelTop = settings.FlatProbability >= 1 || rng.NextDouble() < .16;
+                float slopeX = parallelTop ? 0 : Range(-.45f, .45f) * width / length;
+                float slopeZ = parallelTop ? 0 : Range(-.55f, .55f);
+                planes.Add(CutPlane(new Vector3(slopeX, 1, slopeZ), thickness));
+                if (!parallelTop && cuts < 3 && rng.NextDouble() < .55)
+                    planes.Add(CutPlane(new Vector3(-slopeX, 1, -slopeZ), thickness * Range(.78f, 1.22f)));
+
+                var hull = ArcadeStoneHull.FromPlanes(planes);
+                if (hull.IsPlayable) return hull.ToMesh("Arcade stone " + seed);
             }
-            var offset = heading * new Vector3(length * Range(-.04f, .04f), 0, width * Range(-.03f, .03f));
-            return BevelledHull("Arcade stone " + seed, outline, height, Range(.65f, .83f), Range(.66f, .85f), offset);
+
+            var fallback = SidePlanes(length, width);
+            fallback.Add(new Plane(Vector3.down, Vector3.zero));
+            fallback.Add(CutPlane(Vector3.up, width * .42f));
+            return ArcadeStoneHull.FromPlanes(fallback).ToMesh("Arcade stone " + seed);
         }
+
+        static List<Plane> SidePlanes(float length, float width) => new()
+        {
+            CutPlane(Vector3.left, length * .5f), CutPlane(Vector3.right, length * .5f),
+            CutPlane(Vector3.back, width * .5f), CutPlane(Vector3.forward, width * .5f)
+        };
+
+        static Plane CutPlane(Vector3 normal, float offset) => new(normal.normalized, -offset / normal.magnitude);
 
         internal static Mesh CreatePedestal()
         {
