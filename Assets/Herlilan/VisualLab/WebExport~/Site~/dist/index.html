@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#26342e">
+<title>Still Balance · 叠石</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;background:#26342e;color:#f4f3e8;font:16px system-ui}
+body{display:grid;place-items:center;height:100dvh;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+main{position:relative;height:100%;width:min(100%,65dvh);background:#718276}canvas{display:block;width:100%;height:100%;touch-action:none;outline:none}
+output{position:absolute;inset:0;display:grid;place-content:center;text-align:center;gap:1em;background:#65796c;padding:1em}output[hidden]{display:none}
+</style>
+<main><canvas id="unity-canvas" tabindex="0" aria-label="叠石游戏"></canvas><output role="status">Still Balance<progress max="1" value="0"></progress></output></main>
+<script src="Build/Export.loader.js"></script>
+<script>
+const canvas=document.querySelector('canvas'),statusPanel=document.querySelector('output');
+async function start(){
+  try {
+    await createUnityInstance(canvas,{
+      dataUrl:'Build/Export.data.unityweb',frameworkUrl:'Build/Export.framework.js.unityweb',codeUrl:'Build/Export.wasm.unityweb',
+      streamingAssetsUrl:'StreamingAssets',companyName:'Herlilan',productName:'Still Balance',productVersion:'1',
+      devicePixelRatio:Math.min(devicePixelRatio,2)
+    },progress=>document.querySelector('progress').value=progress);
+    statusPanel.hidden=true;canvas.focus();
+  }catch(error){statusPanel.textContent='游戏启动失败：'+String(error?.message||error).split('\n')[0];console.error(error)}
+}
+canvas.addEventListener('contextmenu',event=>event.preventDefault());start();
+</script>
+</html>
