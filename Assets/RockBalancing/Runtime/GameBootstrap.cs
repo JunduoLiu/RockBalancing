@@ -7,6 +7,8 @@ namespace RockBalancing
         public Font Typeface;
         public Material StoneMaterial;
         public Material GuideMaterial;
+        public GameObject CabinetModel;
+        [Range(1, 179)] public float ArcadeRotationStepDegrees = 15;
         public StoneShapeSettings StoneShapes = new StoneShapeSettings();
         readonly System.Collections.Generic.List<Material> materials=new System.Collections.Generic.List<Material>();
         void Start()
@@ -15,12 +17,24 @@ namespace RockBalancing
             Application.runInBackground = true;
             var ground = Primitive("Ground", new Vector3(0,-.13f,0), new Vector3(200,.1f,200), new Color(.80f,.84f,.81f));
             var pedestal = Primitive("Base stone", new Vector3(0,0,0), new Vector3(1,.16f,1), new Color(.36f,.40f,.38f));
+            ArcadeCabinet cabinet = null;
+            if (CabinetModel != null)
+            {
+                ground.GetComponent<Renderer>().enabled = false;
+                var floor = Primitive("Arcade floor", new Vector3(0, -.74f, 0), new Vector3(200, .1f, 200),
+                    new Color(.45f, .53f, .50f));
+                var floorShape = floor.GetComponent<Collider>();
+                floorShape.enabled = false;
+                Destroy(floorShape);
+                cabinet = gameObject.AddComponent<ArcadeCabinet>();
+                cabinet.Initialize(CabinetModel);
+            }
             var cameraObject = new GameObject("Game camera", typeof(Camera), typeof(AudioListener));
             cameraObject.transform.SetParent(transform);
             cameraObject.tag = "MainCamera";
             var camera = cameraObject.GetComponent<Camera>();
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(.86f,.89f,.86f);
+            camera.backgroundColor = cabinet == null ? new Color(.86f,.89f,.86f) : new Color(.57f,.63f,.61f);
             camera.fieldOfView = 42;
             camera.nearClipPlane = .02f;
             camera.farClipPlane = 250;
@@ -37,13 +51,19 @@ namespace RockBalancing
             sessionObject.transform.SetParent(transform);
             var session = sessionObject.AddComponent<GameSession>();
             var input = gameObject.AddComponent<GameInput>();
-            input.Session = session; input.ViewCamera = camera;
+            input.Session = session; input.ViewCamera = camera; input.Cabinet = cabinet;
+            if (cabinet != null)
+            {
+                input.RotationStepDegrees = ArcadeRotationStepDegrees;
+                cabinet.PlaceCamera(camera);
+            }
             var view = gameObject.AddComponent<GameView>();
             view.Session = session; view.Input = input; view.Typeface = Typeface;
             view.Build();
             session.Initialize(new StoneFactory(StoneMaterial, StoneShapes), pedestal.GetComponent<Collider>(), ground.GetComponent<Collider>());
             var guide=gameObject.AddComponent<PlacementGuide>();
             guide.Template=GuideMaterial; guide.Session=session;
+            if (cabinet != null) return;
             var share=gameObject.AddComponent<ShareController>();
             share.Session=session;share.View=view;share.Input=input;share.Initialize();
         }

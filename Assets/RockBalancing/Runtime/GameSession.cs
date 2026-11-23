@@ -144,7 +144,13 @@ namespace RockBalancing
             }
         }
 
-        public bool Adjust(Stone expected, Vector3 position, Quaternion rotation)
+        public bool Adjust(Stone expected, Vector3 position, Quaternion rotation) =>
+            SweepAdjustment(expected, position, rotation, allowPartial: true);
+
+        public bool AdjustRotationStep(Stone expected, Quaternion rotation) =>
+            expected != null && SweepAdjustment(expected, expected.transform.position, rotation, allowPartial: false);
+
+        bool SweepAdjustment(Stone expected, Vector3 position, Quaternion rotation, bool allowPartial)
         {
             if (expected == null || expected != Pending) return false;
             var origin = expected.transform.position;
@@ -162,9 +168,10 @@ namespace RockBalancing
                 // overlap, but never enable physics until it is fully clear.
                 if (depth > .0002f && (previousDepth <= .0002f || depth >= previousDepth-.000001f))
                 { ContactFeedback(); return false; }
-                expected.transform.SetPositionAndRotation(p,q);
+                if (allowPartial) expected.transform.SetPositionAndRotation(p,q);
                 previousDepth=depth;
             }
+            if (!allowPartial) expected.transform.SetPositionAndRotation(position, rotation);
             Feedback="";
             return true;
         }
