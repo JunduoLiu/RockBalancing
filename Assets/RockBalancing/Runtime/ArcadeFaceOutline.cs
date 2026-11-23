@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -15,10 +16,25 @@ namespace RockBalancing
 
         Camera projectionCamera;
         Stone pending;
-        ArcadeFaceSnap.FaceMatch match;
-        Matrix4x4 pendingPose, supportPose, view, projection;
+        StoneFace hangingFace;
+        readonly List<SupportOutline> supportOutlines = new();
+        Matrix4x4 pendingPose, view, projection;
         Vector2Int screen;
         float unitsPerPixel;
+
+        readonly struct SupportOutline
+        {
+            public readonly Collider Collider;
+            public readonly StoneFace Face;
+            public readonly Matrix4x4 Pose;
+
+            public SupportOutline(Collider collider, StoneFace face)
+            {
+                Collider = collider;
+                Face = face;
+                Pose = collider == null ? default : collider.transform.localToWorldMatrix;
+            }
+        }
 
         public static ArcadeFaceOutline Create(GameView view)
         {
@@ -32,29 +48,44 @@ namespace RockBalancing
 
         public void Show(ArcadeFaceSnap snap, Camera camera)
         {
-            var pair = snap.Match;
-            if (snap.Pending == null || pair.Support == null || snap.Opacity <= 0)
+            var matches = snap.Matches;
+            float opacity = snap.Opacity;
+            if (snap.Pending == null || matches.Count == 0 || opacity <= 0)
             {
                 gameObject.SetActive(false);
+                supportOutlines.Clear();
                 return;
             }
 
             gameObject.SetActive(true);
-            canvasRenderer.SetAlpha(snap.Opacity);
+            canvasRenderer.SetAlpha(opacity);
             float scale = 1 / canvas.scaleFactor;
             var size = new Vector2Int(camera.pixelWidth, camera.pixelHeight);
             var nextPending = snap.Pending.transform.localToWorldMatrix;
-            var nextSupport = pair.Support.transform.localToWorldMatrix;
-            if (pending == snap.Pending && match.Support == pair.Support && match.HangingFace == pair.HangingFace &&
-                match.SupportFace == pair.SupportFace && pendingPose == nextPending && supportPose == nextSupport &&
-                view == camera.worldToCameraMatrix && projection == camera.projectionMatrix && screen == size &&
-                unitsPerPixel == scale) return;
+            var nextHangingFace = matches[0].HangingFace;
+            bool dirty = pending != snap.Pending || hangingFace != nextHangingFace || pendingPose != nextPending ||
+                view != camera.worldToCameraMatrix || projection != camera.projectionMatrix || screen != size ||
+                unitsPerPixel != scale || supportOutlines.Count != matches.Count;
+            for (int i = 0; i < matches.Count; i++)
+            {
+                var next = new SupportOutline(matches[i].Support, matches[i].SupportFace);
+                if (i == supportOutlines.Count)
+                {
+                    supportOutlines.Add(next);
+                    continue;
+                }
+                var previous = supportOutlines[i];
+                dirty |= previous.Collider != next.Collider || previous.Face != next.Face || previous.Pose != next.Pose;
+                supportOutlines[i] = next;
+            }
+            if (supportOutlines.Count > matches.Count)
+                supportOutlines.RemoveRange(matches.Count, supportOutlines.Count - matches.Count);
+            if (!dirty) return;
 
             projectionCamera = camera;
             pending = snap.Pending;
-            match = pair;
+            hangingFace = nextHangingFace;
             pendingPose = nextPending;
-            supportPose = nextSupport;
             view = camera.worldToCameraMatrix;
             projection = camera.projectionMatrix;
             screen = size;
@@ -65,10 +96,11 @@ namespace RockBalancing
         protected override void OnPopulateMesh(VertexHelper mesh)
         {
             mesh.Clear();
-            if (pending == null || match.Support == null || projectionCamera == null) return;
+            if (pending == null || hangingFace == null || projectionCamera == null) return;
             Physics.SyncTransforms();
-            DrawFace(mesh, pendingPose, match.HangingFace);
-            DrawFace(mesh, supportPose, match.SupportFace);
+            DrawFace(mesh, pendingPose, hangingFace);
+            foreach (var support in supportOutlines)
+                if (support.Collider != null) DrawFace(mesh, support.Pose, support.Face);
         }
 
         void DrawFace(VertexHelper mesh, Matrix4x4 pose, StoneFace face)
