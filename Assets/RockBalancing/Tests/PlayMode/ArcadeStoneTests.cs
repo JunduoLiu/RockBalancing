@@ -130,12 +130,7 @@ namespace RockBalancing.Tests
                 {
                     session.Restart();
                     var mesh = session.Pending.GetComponent<MeshFilter>().sharedMesh;
-                    var footprint = mesh.vertices.Select(v => new Vector2(v.x, v.z)).Distinct().ToArray();
-                    var diameter = (from a in footprint from b in footprint select a - b)
-                        .OrderByDescending(delta => delta.sqrMagnitude).First();
-                    var across = Vector2.Perpendicular(diameter.normalized);
-                    var widths = footprint.Select(p => Vector2.Dot(p, across));
-                    Assert.That(widths.Max() - widths.Min(), Is.LessThan(diameter.magnitude * .60f),
+                    Assert.That(mesh.bounds.size.z, Is.LessThan(mesh.bounds.size.x * .60f),
                         "Long stones must be distinguishable from the broad, flat supply.");
                 }
             }
