@@ -7,6 +7,7 @@ namespace RockBalancing
     {
         const float CaptureAngle = 3f;
         const float EscapeAngle = 3.4f;
+        const float MinimumSupportUp = .01f;
         const float PlaneTolerance = .0015f;
         const float FadeSeconds = .24f;
         Quaternion? rawRotation;
@@ -70,13 +71,14 @@ namespace RockBalancing
                 rawRotation = requested;
                 return;
             }
+            bool leaving = attached;
             Fade();
 
             // Keep the game's existing swept contact restrictions for the player's rotation.
             // The magnetic correction uses the same sweep, but commits the whole correction or none.
             rawRotation = null;
             if (!session.Adjust(stone, stone.transform.position, requested)) return;
-            if (!TryFindMatch(session, stone, previous, requested, out var match)) return;
+            if (!TryFindMatch(session, stone, previous, requested, leaving, out var match)) return;
             var aligned = match.Aligned(requested);
             if (!session.TryAlignRotation(stone, aligned)) return;
 
@@ -103,10 +105,12 @@ namespace RockBalancing
             }
         }
 
-        static bool TryFindMatch(GameSession session, Stone stone, Quaternion previous, Quaternion requested, out FaceMatch match)
+        static bool TryFindMatch(GameSession session, Stone stone, Quaternion previous, Quaternion requested,
+            bool leaving, out FaceMatch match)
         {
             FaceMatch best = default;
-            float bestError = CaptureAngle;
+            float bestError = float.PositiveInfinity;
+            bool bestEntered = false;
             List<Vector2> footprint = null;
             var hangingFaces = StoneFace.Of(stone.Shape);
             Consider(session.Base);
@@ -126,15 +130,22 @@ namespace RockBalancing
 
                 foreach (var supportFace in StoneFace.Of(support))
                 {
-                    if (support.transform.TransformDirection(supportFace.LocalNormal).y <= .01f) continue;
+                    if (support.transform.TransformDirection(supportFace.LocalNormal).y < MinimumSupportUp) continue;
                     foreach (var hangingFace in hangingFaces)
                     {
                         var candidate = new FaceMatch(hangingFace, support, supportFace);
                         float error = candidate.Error(requested);
-                        if (error > bestError || error + .02f >= candidate.Error(previous)) continue;
+                        if (error > CaptureAngle) continue;
+                        float previousError = candidate.Error(previous);
+                        if (error + .02f >= previousError) continue;
+                        bool entered = previousError > CaptureAngle;
+                        // A newly reached angle takes precedence over faces that
+                        // were already near parallel, especially during breakaway.
+                        if ((!entered && (leaving || bestEntered)) || (entered == bestEntered && error > bestError)) continue;
                         footprint ??= Footprint(stone);
                         if (!Reachable(stone, footprint, support, supportFace)) continue;
                         bestError = error;
+                        bestEntered = entered;
                         best = candidate;
                     }
                 }
@@ -168,7 +179,7 @@ namespace RockBalancing
         {
             if (!support.enabled || !support.gameObject.activeInHierarchy || footprint.Count < 3) return false;
             var normal = support.transform.TransformDirection(face.LocalNormal);
-            if (normal.y <= .01f) return false;
+            if (normal.y < MinimumSupportUp) return false;
 
             var overlap = new List<Vector2>();
             foreach (var corner in face.Corners) overlap.Add(Horizontal(support.transform.TransformPoint(corner)));
