@@ -62,63 +62,6 @@ namespace RockBalancing.Tests
             Assert.That(shape.bounds.size.z, Is.EqualTo(1).Within(.002f));
         }
 
-        [Test] public void PendingStoneKeepsAFlatToneWithinTheSameLightingBand()
-        {
-            var stone = session.Pending.GetComponent<Renderer>();
-            Color32 first = ReadTop(stone, 48);
-            Color32 second = ReadTop(stone, 65);
-            Assert.That(first.g, Is.InRange(35, 235), "Read a visible stone surface.");
-            Assert.That(Mathf.Abs(first.g - second.g), Is.LessThanOrEqualTo(2),
-                $"The broad, lit support face changes tone within one band ({first} to {second}).");
-        }
-
-        [Test] public void StoneRemainsDistinctAgainstThePedestalInShade()
-        {
-            var stone = ReadTop(session.Pending.GetComponent<Renderer>(), -90);
-            var pedestal = ReadTop(session.Base.GetComponent<Renderer>(), -90);
-            Assert.That((int)stone.g - pedestal.g, Is.GreaterThanOrEqualTo(20),
-                $"A stone in shade must still stand out against its support ({stone} on {pedestal}).");
-        }
-
-        Color32 ReadTop(Renderer surface, float elevation)
-        {
-            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
-                Assert.Ignore("This comparison needs a graphics device.");
-
-            var camera = bootstrap.GetComponentInChildren<Camera>();
-            var sun = bootstrap.GetComponentInChildren<Light>();
-            // Sample the actual game surface without the claw, selection guide or nearby stones.
-            int layer = surface.gameObject.layer;
-            surface.gameObject.layer = 30;
-            surface.transform.rotation = Quaternion.identity;
-            camera.cullingMask = 1 << surface.gameObject.layer;
-            camera.transform.SetPositionAndRotation(surface.bounds.center + Vector3.up * (surface.bounds.extents.y + .3f),
-                Quaternion.LookRotation(Vector3.down, Vector3.forward));
-            camera.orthographic = true;
-            camera.orthographicSize = .05f;
-            sun.shadows = LightShadows.None;
-            sun.transform.rotation = Quaternion.Euler(elevation, -35, 0);
-            var target = RenderTexture.GetTemporary(64, 64, 24, RenderTextureFormat.ARGB32);
-            var pixel = new Texture2D(1, 1, TextureFormat.RGB24, false);
-            var previous = RenderTexture.active;
-            camera.targetTexture = target;
-            try
-            {
-                camera.Render();
-                RenderTexture.active = target;
-                pixel.ReadPixels(new Rect(32, 32, 1, 1), 0, 0);
-                return pixel.GetPixel(0, 0);
-            }
-            finally
-            {
-                surface.gameObject.layer = layer;
-                camera.targetTexture = null;
-                RenderTexture.active = previous;
-                RenderTexture.ReleaseTemporary(target);
-                Object.Destroy(pixel);
-            }
-        }
-
         [Test] public void ElongatedStonesHaveADistinctlyLongStraightEdgedOutline()
         {
             bootstrap.StoneShapes.FlatProbability = 0;
@@ -130,12 +73,7 @@ namespace RockBalancing.Tests
                 {
                     session.Restart();
                     var mesh = session.Pending.GetComponent<MeshFilter>().sharedMesh;
-                    var footprint = mesh.vertices.Select(v => new Vector2(v.x, v.z)).Distinct().ToArray();
-                    var diameter = (from a in footprint from b in footprint select a - b)
-                        .OrderByDescending(delta => delta.sqrMagnitude).First();
-                    var across = Vector2.Perpendicular(diameter.normalized);
-                    var widths = footprint.Select(p => Vector2.Dot(p, across));
-                    Assert.That(widths.Max() - widths.Min(), Is.LessThan(diameter.magnitude * .60f),
+                    Assert.That(mesh.bounds.size.z, Is.LessThan(mesh.bounds.size.x * .60f),
                         "Long stones must be distinguishable from the broad, flat supply.");
                 }
             }

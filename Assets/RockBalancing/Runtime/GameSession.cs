@@ -159,6 +159,10 @@ namespace RockBalancing
         public bool AdjustRotationStep(Stone expected, Quaternion rotation) =>
             expected != null && SweepAdjustment(expected, expected.transform.position, rotation, allowPartial: false);
 
+        internal bool TryAlignRotation(Stone expected, Quaternion rotation) =>
+            expected != null && SweepAdjustment(expected, expected.transform.position, rotation,
+                allowPartial: false, reportFeedback: false);
+
         internal void LowerPendingTo(float maximumLift)
         {
             var pending = Pending;
