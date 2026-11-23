@@ -8,7 +8,9 @@ Open `Scenes/Arcade.unity` in Play Mode. Drag the joystick to move the claw left
 
 Drag horizontally from empty space to look around the cabinet. Release to return to the front along the shortest arc. Grab empty space again during the return to keep looking. The console stays in front of the machine. Wait for the camera to return fully, then press a control again to operate it.
 
-Drag the held stone itself to rotate it. In 设置, choose free rotation or 15°/30° steps. In stepped mode the three rings show the cabinet axes. One continuous drag can cross several steps or reverse direction. At an obstruction the stone stops at the last clear step, and you can drag back.
+New arcade stones have 5–9 flat faces. Their finish is drawn separately from their shape. Granite, shale and basalt make up about 70% of the supply, with crystal, gemstone and gold making up the rest. All six use the same density and contact settings. [Compare one stone under two lighting conditions](../../docs/experiments/issue-50/arcade-finishes.png).
+
+Drag the held stone itself to rotate it. In 设置, choose free rotation or 15°/30° steps. In free rotation, turning within about 3° of a reachable support face aligns the two faces. Their edges light up together. Faint dashes show edges hidden behind the held stone. Pause to hold the alignment or keep dragging through it to try another face. The release button drops the stone from its current position. In stepped mode the three rings show the cabinet axes. One continuous drag can cross several steps or reverse direction. At an obstruction the stone stops at the last clear step, and you can drag back.
 
 The perspective camera looks at the standard supply position above the centre of the base. The camera and chamber rise and fall with the tower. Moving the claw and releasing a stone leave the framing steady. In either screen orientation, one original chamber height remains visible below the roof.
 
