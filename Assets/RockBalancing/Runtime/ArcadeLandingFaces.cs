@@ -13,13 +13,13 @@ namespace RockBalancing
             (first, second) => second.High.CompareTo(first.High));
         Collider[] nearby = new Collider[16];
         Dictionary<Collider, Matrix4x4> poses = new(), surveyed = new();
-        readonly List<Projection> bottoms = new(), tops = new();
+        readonly Projection bottom = new();
+        readonly List<Projection> tops = new();
         readonly List<Vector2> opening = new(), mask = new(), intersection = new(), clipped = new();
         readonly Stack<List<Vector2>> polygonPool = new();
         List<List<Vector2>> exposed = new(), remaining = new();
         Collider pendingShape;
         Matrix4x4 pendingPose;
-        int bottomCount;
 
         public int Count { get; private set; }
         public Projection this[int index] => tops[index];
@@ -27,6 +27,7 @@ namespace RockBalancing
         public void Clear()
         {
             pendingShape = null;
+            bottom.Collider = null;
             poses.Clear();
             surveyed.Clear();
             for (int i = 0; i < Count; i++) tops[i].Collider = null;
@@ -39,10 +40,16 @@ namespace RockBalancing
             var shape = pending.Shape;
             var pose = shape.transform.localToWorldMatrix;
             var bounds = shape.bounds;
+            var pivot = shape.transform.position;
+            var offset = bounds.center - pivot;
+            // Query the space that any candidate rotation can occupy. A correction
+            // can bring a face into the footprint or reveal a blocker at its edge.
+            float radius = (bounds.extents + Vector3.Max(offset, -offset)).magnitude;
             float floor = session.Ground == null ? session.Base.bounds.min.y : session.Ground.bounds.min.y;
-            var min = new Vector3(bounds.min.x, Mathf.Min(floor, bounds.min.y), bounds.min.z);
+            var min = pivot - Vector3.one * radius;
+            min.y = Mathf.Min(floor, min.y);
             var column = new Bounds();
-            column.SetMinMax(min, bounds.max);
+            column.SetMinMax(min, pivot + Vector3.one * radius);
             // Include interpolation and touching faces at the boundary of the query.
             column.Expand(.01f);
             int found = Physics.OverlapBoxNonAlloc(column.center, column.extents, nearby,
@@ -70,10 +77,9 @@ namespace RockBalancing
             (poses, surveyed) = (surveyed, poses);
             pendingShape = shape;
             pendingPose = pose;
-            bottomCount = Project(shape, pose, bottoms, 0, upward: false);
             int topCount = 0;
             foreach (var pair in poses)
-                topCount = Project(pair.Key, pair.Value, tops, topCount, upward: true);
+                topCount = ProjectTops(pair.Key, pair.Value, topCount);
             for (int i = topCount; i < Count; i++) tops[i].Collider = null;
             Count = topCount;
             // Start with the upper faces so a covered stack can reject its lower
@@ -82,56 +88,57 @@ namespace RockBalancing
             return true;
         }
 
-        static int Project(Collider collider, Matrix4x4 pose, List<Projection> faces, int count, bool upward)
+        int ProjectTops(Collider collider, Matrix4x4 pose, int count)
         {
             var normalMatrix = pose.inverse.transpose;
             foreach (var face in StoneFace.Of(collider))
             {
                 var normal = normalMatrix.MultiplyVector(face.LocalNormal).normalized;
-                if (upward ? normal.y <= .00001f : normal.y >= -.00001f) continue;
-                if (count == faces.Count) faces.Add(new Projection());
-                faces[count++].Set(collider, face, pose, normal, upward);
+                if (normal.y <= .00001f) continue;
+                if (count == tops.Count) tops.Add(new Projection());
+                tops[count++].Set(collider, face, pose, normal, upward: true);
             }
             return count;
         }
 
-        public bool Reaches(Projection support)
+        public bool ProjectHangingFace(StoneFace face, Quaternion rotation)
         {
-            support.Reachable ??= FindOpenPath(support);
-            return support.Reachable.Value;
+            var transform = pendingShape.transform;
+            var correction = rotation * Quaternion.Inverse(transform.rotation);
+            var pivot = transform.position;
+            var pose = Matrix4x4.TRS(pivot, correction, Vector3.one) * Matrix4x4.Translate(-pivot) * pendingPose;
+            var normal = pose.inverse.transpose.MultiplyVector(face.LocalNormal).normalized;
+            if (normal.y >= -.00001f) return false;
+            bottom.Set(pendingShape, face, pose, normal, upward: false);
+            return true;
         }
 
-        bool FindOpenPath(Projection support)
+        public bool Reaches(Projection support)
         {
-            for (int i = 0; i < bottomCount; i++)
-            {
-                var bottom = bottoms[i];
-                if (!bottom.Footprint.Overlaps(support.Footprint)) continue;
-                Copy(support.Polygon, opening);
-                Intersect(opening, bottom.Polygon);
-                Clip(opening, bottom.Above(support, ContactTolerance));
-                if (!HasArea(opening)) continue;
+            if (!bottom.Footprint.Overlaps(support.Footprint)) return false;
+            Copy(support.Polygon, opening);
+            Intersect(opening, bottom.Polygon);
+            Clip(opening, bottom.Above(support, ContactTolerance));
+            if (!HasArea(opening)) return false;
 
-                var first = RentPolygon();
-                Copy(opening, first);
-                exposed.Add(first);
-                for (int j = 0; j < Count && exposed.Count > 0; j++)
-                {
-                    var blocker = tops[j];
-                    if (blocker.Collider == support.Collider || blocker.High <= support.Low + HeightTolerance ||
-                        blocker.Low > bottom.High + ContactTolerance || !blocker.Footprint.Overlaps(support.Footprint) ||
-                        !blocker.Footprint.Overlaps(bottom.Footprint)) continue;
-                    Copy(blocker.Polygon, mask);
-                    Clip(mask, blocker.Above(support, -HeightTolerance));
-                    Clip(mask, bottom.Above(blocker, ContactTolerance));
-                    if (HasArea(mask)) SubtractMask();
-                }
-                if (exposed.Count == 0) continue;
-                foreach (var polygon in exposed) polygonPool.Push(polygon);
-                exposed.Clear();
-                return true;
+            var first = RentPolygon();
+            Copy(opening, first);
+            exposed.Add(first);
+            for (int j = 0; j < Count && exposed.Count > 0; j++)
+            {
+                var blocker = tops[j];
+                if (blocker.Collider == support.Collider || blocker.High <= support.Low + HeightTolerance ||
+                    blocker.Low > bottom.High + ContactTolerance || !blocker.Footprint.Overlaps(support.Footprint) ||
+                    !blocker.Footprint.Overlaps(bottom.Footprint)) continue;
+                Copy(blocker.Polygon, mask);
+                Clip(mask, blocker.Above(support, -HeightTolerance));
+                Clip(mask, bottom.Above(blocker, ContactTolerance));
+                if (HasArea(mask)) SubtractMask();
             }
-            return false;
+            bool reaches = exposed.Count > 0;
+            foreach (var polygon in exposed) polygonPool.Push(polygon);
+            exposed.Clear();
+            return reaches;
         }
 
         void SubtractMask()
@@ -241,7 +248,6 @@ namespace RockBalancing
             public Vector3 Normal;
             public Rect Footprint;
             public float Low, High;
-            public bool? Reachable;
             public readonly List<Vector2> Polygon = new();
             Vector3 origin;
             Vector2 gradient;
@@ -251,7 +257,6 @@ namespace RockBalancing
                 Collider = collider;
                 Face = face;
                 Normal = normal;
-                Reachable = null;
                 origin = pose.MultiplyPoint3x4(face.Corners[0]);
                 gradient = -new Vector2(normal.x, normal.z) / normal.y;
                 Low = High = origin.y;
