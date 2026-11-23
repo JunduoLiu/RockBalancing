@@ -212,11 +212,18 @@ namespace RockBalancing.Tests
         }
 
         [UnityTest]
-        public IEnumerator AContinuousDragVisitsCloseTowerTopAnglesInBothDirections()
+        public IEnumerator AContinuousDragVisitsCloseTowerTopAnglesInBothDirections() =>
+            VisitCloseTowerTopAngles(18f, samples: 5);
+
+        [UnityTest]
+        public IEnumerator AOnePixelDragCatchesADetentItPassesBetweenSamples() =>
+            VisitCloseTowerTopAngles(16.22f, samples: 1);
+
+        IEnumerator VisitCloseTowerTopAngles(float secondAngle, int samples)
         {
             UseKnownFlatStones();
             var firstSlope = Quaternion.AngleAxis(16, Vector3.right);
-            var secondSlope = Quaternion.AngleAxis(18, Vector3.right);
+            var secondSlope = Quaternion.AngleAxis(secondAngle, Vector3.right);
             var left = PlaceSupport(-.12f, firstSlope);
             var right = PlaceSupport(.12f, secondSlope);
             Assert.That(session.Adjust(stone, new Vector3(0, session.BaseTop + .39f, 0),
@@ -231,7 +238,7 @@ namespace RockBalancing.Tests
             ExpectSupportOutline(left, true);
             ExpectSupportOutline(right, false);
 
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < samples; i++)
             {
                 cursor += Vector2.down;
                 yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, cursor);
@@ -240,7 +247,7 @@ namespace RockBalancing.Tests
             ExpectSupportOutline(left, false);
             ExpectSupportOutline(right, true);
 
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < samples; i++)
             {
                 cursor += Vector2.up;
                 yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, cursor);
