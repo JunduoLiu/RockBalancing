@@ -69,11 +69,142 @@ namespace RockBalancing.Tests
         }
 
         [UnityTest]
+        public IEnumerator FreeDragAlignsThePendingStoneHighAboveTheBase()
+        {
+            var position = new Vector3(0, session.BaseTop + .53f, 0);
+            var heading = Quaternion.AngleAxis(32, Vector3.up);
+            var nearLevel = Quaternion.Euler(1.6f, 0, -1.4f) * heading;
+            var drag = Vector2.down * 26;
+            var dragTurn = Quaternion.AngleAxis(drag.y * input.RotationSensitivity, input.ViewCamera.transform.right);
+            Assert.That(session.Adjust(stone, position, Quaternion.Inverse(dragTurn) * nearLevel), Is.True);
+            yield return null;
+
+            var grab = StoneCenter();
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Began, grab);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, grab + drag);
+            Assert.That(Vector3.Angle(stone.transform.up, Vector3.up), Is.LessThan(.1f));
+            Assert.That(Vector3.Angle(stone.transform.right, heading * Vector3.right), Is.LessThan(.1f));
+            Assert.That(stone.transform.position, Is.EqualTo(position));
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Ended, grab + drag);
+            ExpectPose(heading);
+        }
+
+        [UnityTest]
+        public IEnumerator MatchedFacesStayLitUntilReleaseAndTheStoneFallsNormally()
+        {
+            var position = new Vector3(0, session.BaseTop + .36f, 0);
+            var drag = Vector2.down * 26;
+            var dragTurn = Quaternion.AngleAxis(drag.y * input.RotationSensitivity, input.ViewCamera.transform.right);
+            Assert.That(session.Adjust(stone, position, Quaternion.Inverse(dragTurn) *
+                Quaternion.AngleAxis(2, Vector3.right)), Is.True);
+            yield return null;
+
+            var grab = StoneCenter();
+            yield return Tap(grab, drag);
+            var outline = MatchOutline();
+            Assert.That(outline, Is.Not.Null, "The cabinet shows paired outlines after the drag ends.");
+            Assert.That(outline.canvasRenderer.GetAlpha(), Is.EqualTo(1));
+            yield return new WaitForSecondsRealtime(.3f);
+            Assert.That(MatchOutline(), Is.SameAs(outline));
+            Assert.That(outline.canvasRenderer.GetAlpha(), Is.EqualTo(1));
+
+            yield return Tap(ControlPoint("Release"));
+            Assert.That(MatchOutline(), Is.Null, "The previous pair leaves when the pending stone changes.");
+            Assert.That(stone.Released, Is.True);
+            Assert.That(stone.Body.isKinematic, Is.False);
+            Assert.That(session.Pending, Is.Not.SameAs(stone));
+            for (int i = 0; i < 5; i++) yield return new WaitForFixedUpdate();
+            Assert.That(stone.Body.position.y, Is.LessThan(position.y - .01f));
+            Assert.That(stone.Body.position.y, Is.GreaterThan(session.BaseTop + .1f));
+        }
+
+        [UnityTest]
+        public IEnumerator FreeDragCanCrossOrReverseOutOfADetentOnASlopedRock()
+        {
+            UseKnownFlatStones();
+            var support = stone;
+            var slope = Quaternion.Euler(14, 0, -8);
+            float low = support.OwnedMesh.vertices.Min(vertex => (slope * vertex).y);
+            var supportPosition = new Vector3(0, session.BaseTop - low + .002f, 0);
+            Assert.That(session.Adjust(support, supportPosition, slope), Is.True);
+            Assert.That(session.Release(support), Is.True);
+            // Preserve a known tilted contact while this test isolates rotation on the next stone.
+            support.Body.constraints = RigidbodyConstraints.FreezeAll;
+            support.Body.Sleep();
+            stone = session.Pending;
+            yield return null;
+
+            var position = new Vector3(0, session.BaseTop + .43f, 0);
+            var drag = Vector2.down * 26;
+            var dragTurn = Quaternion.AngleAxis(drag.y * input.RotationSensitivity, input.ViewCamera.transform.right);
+            Assert.That(session.Adjust(stone, position, Quaternion.Inverse(dragTurn) *
+                Quaternion.AngleAxis(2, Vector3.right) * slope), Is.True);
+            yield return null;
+
+            var grab = StoneCenter();
+            var caught = grab + drag;
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Began, grab);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, caught);
+            Assert.That(Vector3.Angle(stone.transform.up, support.transform.up), Is.LessThan(.1f));
+            var poseAtFirstCatch = stone.transform.rotation;
+            var outline = MatchOutline();
+            Assert.That(outline, Is.Not.Null);
+
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, caught + Vector2.down * 11);
+            Assert.That(Quaternion.Angle(stone.transform.rotation, poseAtFirstCatch), Is.EqualTo(4.95f).Within(.1f));
+            Assert.That(outline.canvasRenderer.GetAlpha(), Is.LessThan(1));
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, caught + Vector2.down * 4);
+            Assert.That(Vector3.Angle(stone.transform.up, support.transform.up), Is.LessThan(.1f));
+            var poseAtSecondCatch = stone.transform.rotation;
+            Assert.That(outline.canvasRenderer.GetAlpha(), Is.EqualTo(1));
+
+            var reversed = caught + Vector2.up * 7;
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, reversed);
+            Assert.That(Quaternion.Angle(stone.transform.rotation, poseAtSecondCatch), Is.EqualTo(4.95f).Within(.1f));
+            var departingPose = stone.transform.rotation;
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Ended, reversed);
+            yield return new WaitForSecondsRealtime(.3f);
+            ExpectPose(departingPose);
+            Assert.That(stone.transform.position, Is.EqualTo(position));
+            Assert.That(MatchOutline(), Is.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator FreeDragStopsAgainstTheBaseAndCanReverse()
+        {
+            UseKnownFlatStones();
+            yield return null;
+            var drag = Vector2.down * 55;
+            var fullTurn = Quaternion.AngleAxis(drag.y * input.RotationSensitivity, input.ViewCamera.transform.right);
+            float startBottom = stone.OwnedMesh.vertices.Min(vertex => vertex.y);
+            float turnedBottom = stone.OwnedMesh.vertices.Min(vertex => (fullTurn * vertex).y);
+            Assert.That(turnedBottom, Is.LessThan(startBottom - .006f));
+            var position = new Vector3(0, session.BaseTop - (startBottom + turnedBottom) * .5f, 0);
+            Assert.That(session.Adjust(stone, position, Quaternion.identity), Is.True);
+            yield return null;
+
+            var grab = StoneCenter();
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Began, grab);
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, grab + drag);
+            var stopped = stone.transform.rotation;
+            Assert.That(Quaternion.Angle(stopped, Quaternion.identity), Is.InRange(3f, 21f));
+            Assert.That(session.Feedback, Is.Not.Empty);
+
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Moved, grab + drag + Vector2.up * 10);
+            Assert.That(Quaternion.Angle(stone.transform.rotation, Quaternion.identity),
+                Is.LessThan(Quaternion.Angle(stopped, Quaternion.identity)));
+            Assert.That(stone.transform.position, Is.EqualTo(position));
+            yield return Touch(UnityEngine.InputSystem.TouchPhase.Ended, grab + drag + Vector2.up * 10);
+        }
+
+        [UnityTest]
         public IEnumerator OneDragCrossesAndReversesMultipleStepsOnEachCabinetAxis()
         {
+            UseKnownFlatStones();
+            yield return null;
             var center = StoneCenter();
             var diagonalGrab = (Vector2)input.ViewCamera.WorldToScreenPoint(
-                stone.transform.position + new Vector3(-.016f, .017f, 0));
+                stone.transform.position + new Vector3(-.009f, .009f, 0));
             float distance = Mathf.Max(40, .05f * Screen.height);
 
             foreach (var (mode, step) in new[] { ("15°", 15f), ("30°", 30f) })
@@ -247,8 +378,19 @@ namespace RockBalancing.Tests
             yield return Tap(ControlPoint("完成"));
         }
 
+        void UseKnownFlatStones()
+        {
+            var factory = new StoneFactory(root.GetComponent<GameBootstrap>().StoneMaterial,
+                shapes: new StoneShapeSettings { FlatProbability = 1 }, nextSeed: () => 123, arcade: true);
+            session.Initialize(factory, session.Base, session.Ground);
+            stone = session.Pending;
+        }
+
         int VisibleRingCount() => root.GetComponentsInChildren<Graphic>()
             .Count(graphic => graphic.name == "X ring" || graphic.name == "Y ring" || graphic.name == "Z ring");
+
+        Graphic MatchOutline() => root.GetComponentsInChildren<Graphic>()
+            .SingleOrDefault(graphic => graphic.name == "Matched faces");
 
         void ExpectPose(Quaternion pose) =>
             Assert.That(Quaternion.Angle(stone.transform.rotation, pose), Is.LessThan(.1f));

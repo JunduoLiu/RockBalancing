@@ -25,6 +25,7 @@ namespace RockBalancing
         ArcadeConsole arcadeConsole;
         ArcadeSettings arcadeSettings;
         ArcadeRotationRing[] rotationRings;
+        ArcadeFaceOutline faceOutline;
         readonly Color ink = new Color(.16f, .22f, .23f);
         readonly Color paper = new Color(.96f, .95f, .91f, .96f);
 
@@ -68,6 +69,7 @@ namespace RockBalancing
                     ArcadeRotationRing.Create(this, ArcadeAxis.Y),
                     ArcadeRotationRing.Create(this, ArcadeAxis.Z)
                 };
+                faceOutline = ArcadeFaceOutline.Create(this);
             }
             var retry = ButtonAt(Root, "等待下一颗 · 点击重试", new Vector2(.22f,.07f), new Vector2(.78f,.13f), () => { _ = Session.RequestNextAsync(); });
             retry.gameObject.name = "Retry";
@@ -157,6 +159,7 @@ namespace RockBalancing
                 arcadeSettings.MenuButton.interactable = !Input.Modal;
                 var target = Input.StepRotationTarget;
                 foreach (var ring in rotationRings) ring.Show(target, Input.Cabinet, Input.ViewCamera);
+                faceOutline.Show(Input.FaceSnap, Input.ViewCamera);
             }
             controls.SetActive(!Session.Waiting && Input.ArcadeControlsAvailable);
             retryButton.gameObject.SetActive(Session.Waiting);
